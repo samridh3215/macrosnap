@@ -55,7 +55,7 @@ against targets that adapt to your training and your real metabolism.
 - **Macros**: protein by goal (lean-mass based if body fat is known), fat by day type with a 0.7 g/kg minimum, carbs fill the rest, fiber at 14 g per 1000 kcal.
 
 **Infrastructure**
-- **Capella**: the permanent database. The food library grows over time and is shared if you add users later. Meals, weights, days and users are stored there too. Collections and indexes are created on startup.
+- **Storage**: SQLite for self-hosting; Capella is the optional hosted database. The food library grows over time and is shared if you add users later. Meals, weights, days and users are stored there too. Collections and indexes are created on startup.
 - **Redis**: the hot cache for food lookups, aliases, the fuzzy-match index, the model catalogue (24 h) and computed dashboards. Cached dashboards are invalidated instantly with a per-user version counter. If Redis goes down the app keeps working; it just reads from Capella.
 - **OpenRouter**: models can be Auto or Manual.
   - **Auto** picks the newest model in a preferred family from the live catalogue (Haiku-class for vision, Sonnet-class for reasoning).
@@ -63,46 +63,77 @@ against targets that adapt to your training and your real metabolism.
   - Requests use strict JSON schemas where the provider supports them, with self-repair retries otherwise. Cost per analysis is shown.
 - **Multi-user ready**: `TOKENS="tokenA=samridh,tokenB=friend"`.
 
-## Run locally (no keys needed)
+## Self-host in 5 minutes
+
+Macro Snap is self-hosted first. Your data lives in one SQLite file. `docker compose` also starts a small Redis as a cache (it stores nothing you'd miss, and the app keeps working if it's down).
+
+**You need:** Docker, and an [OpenRouter](https://openrouter.ai/keys) API key (or skip the key and try the fake AI below).
+
+```bash
+git clone <this repo> && cd macrosnap
+cp .env.example .env     # set APP_TOKEN=<a long random string> and OPENROUTER_API_KEY=<your key>
+docker compose up -d
+open http://localhost:8080
+```
+
+Your data is stored in the `macrosnap-data` Docker volume (`/data/macrosnap.db` inside the container). Back it up by copying that file.
+
+**Without Docker** (Node 22.13 or newer):
 
 ```bash
 npm install
-npm run dev:fake        # fake AI + in-memory DB/cache, data saved to ./data/dev-store.json
-open http://localhost:8080
-npm test                # 35 tests: food keys, pipeline, learning loop, energy, adaptive TDEE, API
+npm run build
+SQLITE_FILE=./data/macrosnap.db node --env-file=.env dist/server.js
 ```
 
-With real services: copy `.env.example` → `.env`, fill it in, then `npm run build && node --env-file=.env dist/server.js`.
-
-## Set up the services
-
-1. **Couchbase Capella**: create a free-tier cluster and a bucket named `macrosnap`. Under *Database Access*, create a user with read/write on that bucket. Then:
-   - Copy the connection string (`couchbases://cb.xxxx.cloud.couchbase.com`).
-   - Under *Allowed IP addresses*, add your server's IP. On Cloud Run, outbound IPs change, so either set up a static egress IP or allow `0.0.0.0/0` and rely on a strong password.
-   - The server creates scope `app`, its 7 collections and the indexes on first start. If your DB user isn't allowed to, create them in the UI: `foods, aliases, corrections, users, meals, weights, days`.
-2. **Redis**: any Redis with a `rediss://` URL works. Upstash and Redis Cloud both have free tiers.
-3. **OpenRouter**: create a key at openrouter.ai/keys. Either set `OPENROUTER_API_KEY` on the server, or paste the key into Settings in the app. A key pasted in the app stays on your phone and is sent as a header with each request.
-4. **Strava (optional)**: create an app at strava.com/settings/api. Set *Authorization Callback Domain* to your domain without `https://`, then put the client ID and secret in the env.
-
-## Deploy (Docker → any HTTPS host)
-
-The share sheet requires HTTPS. Google Cloud Run is a good fit: it scales to zero, has a free tier and gives you HTTPS automatically.
+**Just try it, no keys:**
 
 ```bash
-gcloud run deploy macrosnap --source . --region asia-south1 --allow-unauthenticated \
-  --set-env-vars "APP_TOKEN=$(openssl rand -hex 16),PUBLIC_URL=https://<your-run-url>" \
-  --set-env-vars "COUCHBASE_CONNSTR=...,COUCHBASE_USERNAME=...,COUCHBASE_PASSWORD=...,REDIS_URL=..." \
-  --set-env-vars "STRAVA_CLIENT_ID=...,STRAVA_CLIENT_SECRET=..."
+npm install
+npm run dev:fake        # fake AI, in-memory store saved to ./data/dev-store.json
+open http://localhost:8080
+npm test
 ```
 
-Render, Railway and Fly work the same way with the included `Dockerfile`.
+### Get it on your phone
 
-## Install on your phone
+The Android share sheet only works over **HTTPS**, so your server needs a secure URL. Easy options:
+- **Tailscale (recommended)**: install it on the host and your phone, then run `tailscale serve --bg 8080`. You get an HTTPS address that only your own devices can reach.
+- **Cloudflare Tunnel** exposes your local port on a domain you own.
+- Any reverse proxy with a certificate (Caddy is the simplest).
 
+Then:
 1. Open the URL in **Chrome** on Android.
-2. Go to **Settings** and paste your app token (plus the OpenRouter key, if it isn't set on the server). Tap **Test**.
-3. Fill in Body and Goal. Then use Chrome menu ⋮ → **Install app**. It must be *Install*, not "Add shortcut".
-4. Open the app once. After that, in Gallery: share a photo → **Macro Snap**.
+2. Go to **Settings** and paste your `APP_TOKEN` (plus the OpenRouter key if it isn't set on the server). Tap **Test**.
+3. Fill in Body and Goal. Then use Chrome menu ⋮ → **Install app** (not "Add shortcut").
+4. In Gallery: share a photo → **Macro Snap**.
+
+## Configuration
+
+| Variable | What it does |
+|---|---|
+| `APP_TOKEN` | Your login token. Required for anything exposed beyond localhost. |
+| `OPENROUTER_API_KEY` | Server-side key. Or paste one into the app's Settings and it stays on your phone. |
+| `SQLITE_FILE` | Path of the SQLite database. Used when no Couchbase is configured. |
+| `PUBLIC_URL` | Your public HTTPS URL (needed for Strava OAuth). |
+| `TOKENS` | Several users: `tokenA=samridh,tokenB=friend`. |
+| `STRAVA_CLIENT_ID`, `STRAVA_CLIENT_SECRET` | Optional. Create an app at strava.com/settings/api and set the callback domain to your domain. |
+| `JUDGE` | `jev` uses TypeSafe's Jev (via OpenRouter, same key) to settle "same dish?" matches and sanity-check new nutrition numbers. `heuristic` or `off` (default) use the plain similarity rules. |
+| `JEV_MODEL`, `JUDGE_AUTO`, `JUDGE_NONE` | Jev model id (default `typesafe/jev-1.13`) and the 0.85 probability thresholds. |
+| `FAKE_LLM=1` | Use the built-in fake AI (for trying the app or running tests). |
+
+Storage is chosen in this order: Couchbase Capella if `COUCHBASE_CONNSTR` is set, otherwise SQLite if `SQLITE_FILE` is set, otherwise an in-memory store saved to `./data/dev-store.json`. Redis is optional; `docker compose` sets `REDIS_URL` for you, and without it an in-process cache is used.
+
+## Backup and export
+
+- **Export:** `GET /api/export` (with your token) downloads your meals, weights, days, foods and settings as JSON.
+- **Back up the database:** the SQLite file runs in WAL mode, so don't just copy it while the app is running. Either stop the container first (`docker compose stop macrosnap`, copy the volume, start it again), or take a consistent snapshot: `docker compose exec macrosnap node -e "const {DatabaseSync}=require('node:sqlite');new DatabaseSync('/data/macrosnap.db').exec(\"VACUUM INTO '/data/backup.db'\")"` then copy `/data/backup.db` out.
+
+## Optional: cloud services
+
+**Couchbase Capella** (shared or multi-device cloud database): create a free-tier cluster and a bucket named `macrosnap`, create a DB user with read/write on it, and allow your server's IP. The `couchbase` SDK is an optional dependency and is left out of the Docker image; for Capella run `npm i couchbase` in a local build. Set `COUCHBASE_CONNSTR`, `COUCHBASE_USERNAME` and `COUCHBASE_PASSWORD`. The server creates scope `app`, its 7 collections and the indexes on first start. If your DB user isn't allowed to, create them in the UI: `foods, aliases, corrections, users, meals, weights, days`.
+
+**Redis**: any `rediss://` URL works (Upstash and Redis Cloud have free tiers). Set `REDIS_URL`.
 
 ## API
 
@@ -131,7 +162,7 @@ src/
   energy/energy.ts      BMR selection, day types, activity estimation, targets/range/macros
   energy/adaptive.ts    adaptive TDEE
   llm/                  OpenRouter client (strict schemas, self-repair), model auto-pick, fake LLM
-  storage/              Store (Capella | memory) and Cache (Redis | memory, outage-safe)
+  storage/              Store (SQLite | Capella | memory) and Cache (Redis | memory, outage-safe)
   strava/strava.ts      OAuth (signed state), token refresh, day sync
 web/                    PWA: share target, Today, review sheet, Foods, Trends, Settings
 test/                   vitest suites

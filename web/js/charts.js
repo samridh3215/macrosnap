@@ -19,16 +19,16 @@ export function intakeChart(series) {
   const { lo, hi, vals: ticks } = axis(0, Math.max(...vals) * 1.05);
   const iw = W - PAD.l - PAD.r, ih = H - PAD.t - PAD.b, bw = iw / series.length;
   const y = (v) => PAD.t + ih - ((v - lo) / (hi - lo)) * ih;
-  let g = ticks.map((t) => `<line x1="${PAD.l}" x2="${W - PAD.r}" y1="${y(t)}" y2="${y(t)}" stroke="#d3dade" stroke-width=".6"/><text x="${PAD.l - 4}" y="${y(t) + 3}" text-anchor="end">${fmt(t)}</text>`).join("");
+  let g = ticks.map((t) => `<line x1="${PAD.l}" x2="${W - PAD.r}" y1="${y(t)}" y2="${y(t)}" stroke="var(--rim-soft)" stroke-width=".6"/><text x="${PAD.l - 4}" y="${y(t) + 3}" text-anchor="end">${fmt(t)}</text>`).join("");
   series.forEach((s, i) => {
     const x = PAD.l + i * bw;
-    g += `<rect x="${x}" y="${y(s.ceiling)}" width="${bw}" height="${y(s.floor) - y(s.ceiling)}" fill="#2e7d4f" opacity=".12"/>`;
+    g += `<rect x="${x}" y="${y(s.ceiling)}" width="${bw}" height="${y(s.floor) - y(s.ceiling)}" fill="var(--leaf)" opacity=".14"/>`;
     if (s.intake != null) {
-      const col = i === series.length - 1 ? "#a3adb5" : s.intake < s.floor || s.intake > s.ceiling ? "#c2361f" : Math.abs(s.intake - s.target) / s.target <= 0.05 ? "#2e7d4f" : "#d99a00";
+      const col = i === series.length - 1 ? "var(--rim)" : s.intake < s.floor || s.intake > s.ceiling ? "var(--mirch)" : Math.abs(s.intake - s.target) / s.target <= 0.05 ? "var(--leaf)" : "var(--haldi)";
       g += `<rect x="${x + bw * 0.18}" y="${y(s.intake)}" width="${bw * 0.64}" height="${Math.max(0, y(0) - y(s.intake))}" rx="1.5" fill="${col}"/>`;
     }
   });
-  g += `<polyline fill="none" stroke="#18222e" stroke-width="1.3" stroke-dasharray="3 2" points="${series.map((s, i) => `${PAD.l + i * bw + bw / 2},${y(s.target)}`).join(" ")}"/>`;
+  g += `<polyline fill="none" stroke="var(--ink)" stroke-width="1.3" stroke-dasharray="3 2" points="${series.map((s, i) => `${PAD.l + i * bw + bw / 2},${y(s.target)}`).join(" ")}"/>`;
   g += labels(series, bw);
   return `<svg class="chart" viewBox="0 0 ${W} ${H}">${g}</svg>`;
 }
@@ -42,9 +42,9 @@ export function weightChart(series) {
   const iw = W - PAD.l - PAD.r, ih = H - PAD.t - PAD.b, bw = iw / series.length;
   const y = (v) => PAD.t + ih - ((v - lo) / (hi - lo)) * ih;
   const x = (i) => PAD.l + i * bw + bw / 2;
-  let g = ticks.map((t) => `<line x1="${PAD.l}" x2="${W - PAD.r}" y1="${y(t)}" y2="${y(t)}" stroke="#d3dade" stroke-width=".6"/><text x="${PAD.l - 4}" y="${y(t) + 3}" text-anchor="end">${fmt(t)}</text>`).join("");
-  g += `<polyline fill="none" stroke="#2d5da8" stroke-width="2.4" points="${series.map((s, i) => (s.trend != null ? `${x(i)},${y(s.trend)}` : "")).filter(Boolean).join(" ")}"/>`;
-  series.forEach((s, i) => { if (s.weight != null) g += `<circle cx="${x(i)}" cy="${y(s.weight)}" r="2.6" fill="#18222e" opacity=".55"/>`; });
+  let g = ticks.map((t) => `<line x1="${PAD.l}" x2="${W - PAD.r}" y1="${y(t)}" y2="${y(t)}" stroke="var(--rim-soft)" stroke-width=".6"/><text x="${PAD.l - 4}" y="${y(t) + 3}" text-anchor="end">${fmt(t)}</text>`).join("");
+  g += `<polyline fill="none" stroke="var(--neel)" stroke-width="2.4" points="${series.map((s, i) => (s.trend != null ? `${x(i)},${y(s.trend)}` : "")).filter(Boolean).join(" ")}"/>`;
+  series.forEach((s, i) => { if (s.weight != null) g += `<circle cx="${x(i)}" cy="${y(s.weight)}" r="2.6" fill="var(--ink)" opacity=".55"/>`; });
   g += labels(series, bw);
   return `<svg class="chart" viewBox="0 0 ${W} ${H}">${g}</svg>`;
 }

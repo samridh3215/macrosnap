@@ -45,6 +45,16 @@ export interface BmrResult {
  *  weight+height+age → Mifflin–St Jeor (sex-adjusted; midpoint if sex unknown)
  *  less → rougher fallbacks, with the assumption spelled out.
  */
+/** Fields the app needs before targets mean anything. Body fat and athlete stay optional. */
+export function profileMissing(p: Profile): Array<"weightKg" | "heightCm" | "age" | "sex"> {
+  const out: Array<"weightKg" | "heightCm" | "age" | "sex"> = [];
+  if (!p.weightKg) out.push("weightKg");
+  if (!p.heightCm) out.push("heightCm");
+  if (!p.age) out.push("age");
+  if (!p.sex) out.push("sex");
+  return out;
+}
+
 export function computeBmr(p: Profile): BmrResult {
   const assumptions: string[] = [];
   let w = p.weightKg;

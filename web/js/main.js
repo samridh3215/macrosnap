@@ -1,5 +1,6 @@
 import { renderFoods } from "./foods.js";
 import { openCamera } from "./camera.js";
+import { ensureProfile } from "./onboarding.js";
 import { openReview } from "./review.js";
 import { renderSettings } from "./settings.js";
 import { dayState, renderToday } from "./today.js";
@@ -7,6 +8,40 @@ import { renderTrends } from "./trends.js";
 import { $, toast } from "./util.js";
 
 const view = $("#view");
+
+/** Sheets close by dragging the header or grab handle down, or by tapping the dimmed area. */
+function sheetGestures(dlg) {
+  let y0 = null, dy = 0, t0 = 0;
+  const reset = () => { dlg.style.transition = ""; dlg.style.transform = ""; };
+  dlg.addEventListener("touchstart", (e) => {
+    const y = e.touches[0].clientY;
+    if (y - dlg.getBoundingClientRect().top > 64 && !e.target.closest(".sheet-head")) return;
+    y0 = y; dy = 0; t0 = Date.now(); dlg.style.transition = "none";
+  }, { passive: true });
+  dlg.addEventListener("touchmove", (e) => {
+    if (y0 == null) return;
+    dy = Math.max(0, e.touches[0].clientY - y0);
+    dlg.style.transform = `translateY(${dy}px)`;
+  }, { passive: true });
+  const end = () => {
+    if (y0 == null) return;
+    const fast = dy / Math.max(1, Date.now() - t0) > 0.6;
+    y0 = null;
+    dlg.style.transition = "transform .2s cubic-bezier(.23, 1, .32, 1)";
+    if (dy > 110 || (fast && dy > 60)) {
+      dlg.style.transform = "translateY(100%)";
+      setTimeout(() => { dlg.close(); reset(); }, 190);
+    } else { dlg.style.transform = ""; setTimeout(reset, 220); }
+  };
+  dlg.addEventListener("touchend", end);
+  dlg.addEventListener("touchcancel", end);
+  dlg.addEventListener("click", (e) => {
+    if (e.target !== dlg) return;
+    const r = dlg.getBoundingClientRect();
+    if (e.clientY < r.top || e.clientY > r.bottom || e.clientX < r.left || e.clientX > r.right) dlg.close();
+  });
+}
+document.querySelectorAll("dialog.sheet").forEach(sheetGestures);
 const routes = { today: renderToday, foods: renderFoods, trends: renderTrends, settings: renderSettings };
 
 function route() {
@@ -28,6 +63,7 @@ export function startPhoto() {
   });
 }
 window.addEventListener("macrosnap:photo", startPhoto);
+$("#snapFab").onclick = startPhoto;
 
 $("#photoInput").onchange = (e) => {
   const f = e.target.files[0]; e.target.value = "";
@@ -49,6 +85,12 @@ async function handleShared() {
   else if (note) openReview({ mode: "describe", note, date: dayState.date, onSaved: refreshToday });
 }
 
-if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
-route();
-handleShared().catch(() => {});
+if ("serviceWorker" in navigator) {
+  // When a new version takes over, reload once so the open app never runs old files.
+  const hadController = !!navigator.serviceWorker.controller;
+  let reloaded = false;
+  navigator.serviceWorker.addEventListener("controllerchange", () => { if (hadController && !reloaded) { reloaded = true; location.reload(); } });
+  navigator.serviceWorker.register("/sw.js").catch(() => {});
+}
+// Nothing renders until the body profile is complete; shared photos wait behind it too.
+ensureProfile().catch(() => {}).then(() => { route(); handleShared().catch(() => {}); });

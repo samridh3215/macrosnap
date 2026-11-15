@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { config } from "../config.js";
 import { foodKey } from "../food/key.js";
 import type { FoodRepo, Resolution } from "../food/repo.js";
 import { resolveModels, type ResolvedModels } from "../llm/models.js";
@@ -78,7 +79,7 @@ export class NutritionService {
   }
 
   private async resolveMany(reqs: ItemRequest[], ctx: Ctx, models: ResolvedModels) {
-    const resolutions = await Promise.all(reqs.map((r) => this.repo.resolve(r.name)));
+    const resolutions = await Promise.all(reqs.map((r) => this.repo.resolve(r.name, { apiKey: ctx.apiKey })));
     const misses = new Map<string, { key: string; name: string; context: string }>();
     resolutions.forEach((res, i) => {
       if (res.kind === "miss" && res.lookupKey && !misses.has(res.lookupKey)) {
@@ -173,11 +174,32 @@ export class NutritionService {
       } catch { /* keep first-pass numbers, flagged */ }
     }
 
+    // Judge: a confident "too_low / too_high" on a food that passed the arithmetic gets one recompute.
+    const judge = this.repo.judge;
+    const implausible = new Set<string>();
+    if (judge) {
+      const flagged = async (f: NutritionOut["foods"][number]) => {
+        const v = await judge.plausibility({ name: f.canonical_name, per100g: f.per100g, unit: f.unit }, ctx.apiKey).catch(() => null);
+        return !!v && v.verdict !== "ok" && v.p >= config.judge.plausible ? v.verdict : null;
+      };
+      const checked = await Promise.all([...results].filter(([, f]) => validateNutrition(f.per100g, f.ingredients).ok).map(async ([id, f]) => [id, await flagged(f)] as const));
+      const bad = checked.filter(([, v]) => v);
+      if (bad.length) {
+        try {
+          const retry = await call(fixupUser(bad.map(([id, v]) => ({ id, name: byId.get(id)!.name, issues: [`judge: energy density looks ${v === "too_high" ? "too high" : "too low"} for this food`] }))));
+          usage = addUsage(usage, retry.usage);
+          for (const f of retry.data.foods) if (byId.has(f.id) && validateNutrition(f.per100g, f.ingredients).ok) results.set(f.id, f);
+        } catch { /* keep first-pass numbers */ }
+        for (const [id] of bad) if (await flagged(results.get(id)!)) implausible.add(id);
+      }
+    }
+
     const foods = new Map<string, Food>();
     const warnings: string[] = [];
     for (const [id, f] of results) {
       const t = byId.get(id)!;
       const validation = validateNutrition(f.per100g, f.ingredients);
+      if (implausible.has(id)) { validation.ok = false; validation.issues.push("judge: implausible energy density"); }
       const modelKey = foodKey(f.canonical_name);
       const food: Food = {
         key: t.key,
@@ -232,7 +254,7 @@ export class NutritionService {
       learned = await this.repo.learnCorrection(input.lookupKey, newKey, input.previousKey);
     }
 
-    const res: Resolution = await this.repo.resolve(input.name, { fuzzy: "strict", rejectKeys: input.rejectKey ? [input.rejectKey] : [] });
+    const res: Resolution = await this.repo.resolve(input.name, { fuzzy: "strict", rejectKeys: input.rejectKey ? [input.rejectKey] : [], apiKey: ctx.apiKey });
     if (res.kind === "hit") return { item: this.itemFrom(res.food, req, res.match, lookupKey), learned, usage: zeroUsage() };
 
     const { foods, usage, warnings } = await this.compute([{ key: res.lookupKey, name: input.name, context: input.portion || "" }], ctx);
@@ -242,12 +264,16 @@ export class NutritionService {
   }
 
   /** Re-derive a library food (e.g. after improving prompts or switching models). Verified foods need force. */
-  async recompute(key: string, ctx: Ctx, force = false): Promise<Food> {
+  async recompute(key: string, ctx: Ctx, force = false, edit?: { recipe?: Array<{ name: string; grams: number }>; note?: string }): Promise<Food> {
     const old = await this.repo.get(key);
     if (!old) throw Object.assign(new Error("food not found"), { status: 404 });
     if (old.verified && !force) throw Object.assign(new Error("food is verified — pass force to recompute"), { status: 409 });
     const models = await this.models(ctx);
-    const r = await this.computeBatch([{ key, name: old.name, context: "" }], ctx, models);
+    const context = [
+      edit?.recipe?.length ? `user recipe, grams per 100 g of finished dish: ${edit.recipe.map((i) => `${i.name} ${Math.round(i.grams * 10) / 10} g`).join(", ")}` : "",
+      edit?.note?.trim() ? `user note: ${edit.note.trim()}` : "",
+    ].filter(Boolean).join(". ");
+    const r = await this.computeBatch([{ key, name: old.name, context }], ctx, models);
     const fresh = r.foods.get(key);
     if (!fresh) throw new Error(r.warnings[0] || "recompute failed");
     const merged: Food = { ...fresh, aliases: [...new Set([...old.aliases, ...fresh.aliases])], hits: old.hits, createdAt: old.createdAt, version: old.version + 1, verified: false };

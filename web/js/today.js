@@ -1,12 +1,17 @@
 import { del, get, post, put } from "./api.js";
 import { openReview } from "./review.js";
-import { $, addDays, closeSheet, esc, n0, n1, openSheet, prettyDate, toast, today } from "./util.js";
+import { $, addDays, closeSheet, enter, esc, n0, n1, openSheet, prettyDate, toast, today } from "./util.js";
 
 export const dayState = { date: today(), data: null };
 let rootEl = null;
-let poured = false; // the katori pour plays once per session, not on every redraw
+let fresh = true;        // true until the first paint of a day, so only arrivals animate
+let planOpen = false;    // the day-type panel stays open across redraws
 
 const METHOD = { device: "watch calories", power: "power meter", acsm: "pace model", hr: "heart rate", met: "activity estimate", manual: "entered" };
+const CHEV_L = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 6l-6 6 6 6"/></svg>`;
+const CHEV_R = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 6l6 6-6 6"/></svg>`;
+const CHEV_D = `<svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9.5l6 6 6-6"/></svg>`;
+const X_ICON = `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>`;
 const ICON = {
   camera: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M4 8.5h3l1.6-2.5h6.8L17 8.5h3v10H4z"/><circle cx="12" cy="13.3" r="3.4"/></svg>`,
   talk: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M5 5.5h14v10H10l-4 3.5v-3.5H5z"/></svg>`,
@@ -14,8 +19,9 @@ const ICON = {
   plate: `<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="4.5"/></svg>`,
 };
 
-export async function renderToday(root) {
+export async function renderToday(root, _params, quiet = false) {
   rootEl = root;
+  fresh = !quiet;        // arrivals animate; reloads after a save don't
   root.innerHTML = `${header()}<p class="empty"><span class="spin"></span>Setting the table…</p>`;
   bindHeader(root);
   try {
@@ -31,66 +37,43 @@ export async function renderToday(root) {
 
 function header() {
   return `<div class="daybar">
-    <div class="title">${prettyDate(dayState.date)}<div class="tiny">${new Date(`${dayState.date}T00:00:00`).toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long" })}</div></div>
-    <button class="icon-btn" id="prevDay" aria-label="Previous day">‹</button>
-    <button class="icon-btn" id="nextDay" aria-label="Next day" ${dayState.date >= today() ? "disabled" : ""}>›</button>
+    <div class="title">${prettyDate(dayState.date)}<span class="tiny">${new Date(`${dayState.date}T00:00:00`).toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long" })}</span></div>
+    <div class="daynav">
+      <button class="icon-btn" id="prevDay" aria-label="Previous day">${CHEV_L}</button>
+      <button class="icon-btn" id="nextDay" aria-label="Next day" ${dayState.date >= today() ? "disabled" : ""}>${CHEV_R}</button>
+    </div>
   </div>`;
 }
 function bindHeader(root) {
-  $("#prevDay", root).onclick = () => { dayState.date = addDays(dayState.date, -1); renderToday(root); };
-  $("#nextDay", root).onclick = () => { if (dayState.date < today()) { dayState.date = addDays(dayState.date, 1); renderToday(root); } };
+  $("#prevDay", root).onclick = () => { dayState.date = addDays(dayState.date, -1); fresh = true; renderToday(root); };
+  $("#nextDay", root).onclick = () => { if (dayState.date < today()) { dayState.date = addDays(dayState.date, 1); fresh = true; renderToday(root); } };
 }
 
-/* ---------- the thali: rim = calories, katoris = macros ---------- */
-function thali(d) {
-  const t = d.targets, r = t.range, eaten = d.totals.kcal;
-  const C = 180, R = 152, L = 2 * Math.PI * R;
-  const frac = Math.min(eaten / r.ceiling, 1);
-  const status = zone(eaten, r, dayState.date >= today()).cls;
-  const arcColor = status === "band" ? "var(--leaf)" : status === "over" || status === "under" ? "var(--mirch)" : "var(--ink)";
-  const at = (v) => (Math.min(v, r.ceiling) / r.ceiling) * L;
-  const left = Math.round(t.target - eaten);
+/* ---------- hero: what's left, where you sit in your range ---------- */
+const PILL = { low: "Under range", band: "In range", high: "Slightly over", over: "Over limit", under: "Too low" };
+function hero(d, z) {
+  const tg = d.targets, eaten = d.totals.kcal;
+  const left = Math.round(tg.target - eaten);
   const big = left >= 0 ? n0(left) : `+${n0(-left)}`;
-  const sub = left >= 0 ? `left of ${n0(t.target)} kcal` : `over your ${n0(t.target)} target`;
-  // floor tick position on the rim
-  const fa = (r.floor / r.ceiling) * 2 * Math.PI - Math.PI / 2;
-  const fx1 = C + (R - 9) * Math.cos(fa), fy1 = C + (R - 9) * Math.sin(fa), fx2 = C + (R + 9) * Math.cos(fa), fy2 = C + (R + 9) * Math.sin(fa);
-
-  const katori = (i, cx, label, eatenG, goalG, color) => {
-    const kr = 30, inner = 25, f = Math.min(eatenG / (goalG || 1), 1);
-    const h = 2 * inner * f;
-    return `<g>
-      <circle cx="${cx}" cy="206" r="${kr}" fill="#eef1f3" stroke="var(--rim)" stroke-width="1.5"/>
-      <clipPath id="kc${i}"><circle cx="${cx}" cy="206" r="${inner}"/></clipPath>
-      <circle cx="${cx}" cy="206" r="${inner}" fill="#e2e7ea"/>
-      <g clip-path="url(#kc${i})"><rect class="${poured ? "" : `katori-fill k${i}`}" x="${cx - inner}" y="${206 + inner - h}" width="${inner * 2}" height="${h}" fill="${color}"/></g>
-      <circle cx="${cx}" cy="206" r="${inner}" fill="none" stroke="rgba(255,255,255,.6)" stroke-width="1.5"/>
-      <text class="kv" x="${cx}" y="255" text-anchor="middle">${n0(eatenG)}<tspan class="kl" dx="1">/${n0(goalG)}g</tspan></text>
-      <text class="kl" x="${cx}" y="271" text-anchor="middle">${label}</text>
-    </g>`;
-  };
-
-  return `<svg class="thali" viewBox="0 0 360 360" role="img" aria-label="${n0(eaten)} of ${n0(t.target)} kcal eaten. Protein ${n0(d.totals.protein)} of ${t.macros.protein} g, carbs ${n0(d.totals.carbs)} of ${t.macros.carbs} g, fat ${n0(d.totals.fat)} of ${t.macros.fat} g.">
-    <defs>
-      <radialGradient id="steelG" cx="42%" cy="36%" r="75%"><stop offset="0" stop-color="#fbfcfc"/><stop offset=".62" stop-color="#eef1f3"/><stop offset="1" stop-color="#d9dfe3"/></radialGradient>
-      <radialGradient id="wellG" cx="45%" cy="40%" r="70%"><stop offset="0" stop-color="#f7f9fa"/><stop offset="1" stop-color="#e7ecef"/></radialGradient>
-    </defs>
-    <circle cx="${C}" cy="${C + 5}" r="168" fill="rgba(24,34,46,.07)"/>
-    <circle cx="${C}" cy="${C}" r="168" fill="url(#steelG)" stroke="var(--rim)"/>
-    <circle cx="${C}" cy="${C}" r="${R}" fill="none" stroke="#d4dbe0" stroke-width="13"/>
-    <circle cx="${C}" cy="${C}" r="${R}" fill="none" stroke="var(--leaf)" stroke-opacity=".28" stroke-width="13"
-      stroke-dasharray="0 ${at(r.bandLow)} ${at(r.bandHigh) - at(r.bandLow)} ${L}" transform="rotate(-90 ${C} ${C})"/>
-    <line x1="${fx1}" y1="${fy1}" x2="${fx2}" y2="${fy2}" stroke="var(--ink-soft)" stroke-width="2"/>
-    ${eaten > 0 ? `<circle class="arc" cx="${C}" cy="${C}" r="${R}" fill="none" stroke="${arcColor}" stroke-width="13" stroke-linecap="round"
-      stroke-dasharray="${frac * L} ${L}" transform="rotate(-90 ${C} ${C})"/>` : ""}
-    <circle cx="${C}" cy="${C}" r="134" fill="url(#wellG)" stroke="#cfd6db" stroke-width="1.2"/>
-    <text class="big" x="${C}" y="124" text-anchor="middle">${big}</text>
-    <text class="sub" x="${C}" y="158" text-anchor="middle">${sub}</text>
-    ${katori(1, C - 74, "protein", d.totals.protein, t.macros.protein, "var(--neel)")}
-    ${katori(2, C, "carbs", d.totals.carbs, t.macros.carbs, "var(--haldi)")}
-    ${katori(3, C + 74, "fat", d.totals.fat, t.macros.fat, "var(--kokum)")}
-  </svg>`;
+  return `<section class="hero">
+    <div class="hero-top"><span class="eyebrow">${left >= 0 ? "Calories left" : "Calories over"}</span><span class="pill ${z.cls}">${PILL[z.cls] || ""}</span></div>
+    <div class="hero-num num">${big}<small>kcal</small></div>
+    <div class="hero-sub"><b class="num">${n0(eaten)}</b> eaten of ${n0(tg.target)} target</div>
+    ${rangeLine(d)}
+    <p class="hero-note">${z.text}</p>
+  </section>`;
 }
+
+function macros(d) {
+  const t = d.targets, m = d.totals;
+  const one = (cls, label, eaten, goal) => `<div class="mac ${cls}">
+      <span class="mac-l">${label}</span>
+      <b class="num">${n0(eaten)}</b><span class="mac-of num">of ${n0(goal)} g</span>
+      <div class="bar"><i style="--p:${Math.min(1, eaten / (goal || 1)).toFixed(3)}"></i></div></div>`;
+  return `<div class="macros">${one("m-p", "Protein", m.protein, t.macros.protein)}${one("m-c", "Carbs", m.carbs, t.macros.carbs)}${one("m-f", "Fat", m.fat, t.macros.fat)}${one("m-fi", "Fiber", m.fiber, t.macros.fiber)}</div>`;
+}
+
+function presetSourceLabel(d) { return d.presetSource === "manual" ? "set by you" : d.presetSource === "activities" ? "from activities" : "suggested"; }
 
 function zone(eaten, r, inProgress) {
   if (eaten < r.floor && inProgress) return { cls: "low", text: `Eat ${n0(r.bandLow - eaten)}–${n0(r.bandHigh - eaten)} more today.` };
@@ -135,56 +118,52 @@ function draw() {
   const acts = d.activities.map((a) => `<li class="li">
       <div class="grow"><div class="name">${esc(a.name)}</div><div class="sub">${esc(a.sport)}, ${a.minutes} min${a.avgHr ? `, ${a.avgHr} bpm` : ""}. From ${METHOD[a.method] || a.method}${a.source === "strava" ? " via Strava" : ""}.</div></div>
       <div class="kcal">+${n0(a.kcalNet)}<small>kcal</small></div>
-      <button class="btn xs ghost" data-del-act="${a.id}" aria-label="Remove ${esc(a.name)}">✕</button></li>`).join("");
+      <button class="icon-btn" style="width:40px;height:40px;margin-right:-8px;color:var(--ink-faint)" data-del-act="${a.id}" aria-label="Remove ${esc(a.name)}">${X_ICON}</button></li>`).join("");
 
   const meals = d.meals.map((m) => `<li class="li tap" data-meal="${m.id}">
-      ${m.thumb ? `<img class="thumb" src="${m.thumb}" alt="">` : `<div class="thumb">${ICON.plate}</div>`}
+      ${m.thumb ? `<img class="thumb" src="${m.thumb}" alt="" decoding="async">` : `<div class="thumb">${ICON.plate}</div>`}
       <div class="grow"><div class="name">${esc(m.name)}</div>
-        <div class="sub">${esc(m.mealType)} &nbsp; <span class="m-p">${n0(m.totals.protein)}p</span> <span class="m-c">${n0(m.totals.carbs)}c</span> <span class="m-f">${n0(m.totals.fat)}f</span></div></div>
+        <div class="sub">${esc(m.mealType)} · <span class="m-p">${n0(m.totals.protein)}p</span> <span class="m-c">${n0(m.totals.carbs)}c</span> <span class="m-f">${n0(m.totals.fat)}f</span></div></div>
       <div class="kcal">${n0(m.totals.kcal)}<small>kcal</small></div></li>`).join("");
 
   const ad = d.adaptive;
   rootEl.innerHTML = `${header()}
-    <div class="chips" id="presets" role="radiogroup" aria-label="Day type">${presetChips}</div>
-    <p class="preset-note">${presetNote}</p>
+    ${hero(d, z)}
+    ${macros(d)}
 
-    <div class="thali-wrap">${thali(d)}</div>
-    <p class="fiberline">Fiber ${n0(d.totals.fiber)} of ${t.macros.fiber} g</p>
+    <details class="plan" id="plan" ${planOpen ? "open" : ""}>
+      <summary><span class="ps-l">Day type</span><span class="ps-v">${esc(t.preset.label)}</span><span class="ps-s">${presetSourceLabel(d)}</span>${CHEV_D}</summary>
+      <div class="plan-body">
+        <div class="chips" id="presets" role="radiogroup" aria-label="Day type">${presetChips}</div>
+        <p class="preset-note">${presetNote}</p>
+        <div class="calc-h">How today's target is worked out</div>
+        <table class="calc">${calc}</table>
+        <p class="tiny muted">Protein is set at ${esc(t.macros.basis)}. Fat follows the day type and carbs fill the rest, so hard days get more carbs.${t.warnings.length ? ` ${t.warnings.map(esc).join(". ")}.` : ""}</p>
+      </div>
+    </details>
 
-    <p class="verdict ${z.cls}">${z.text}</p>
-    <p class="verdict-sub">Your range today is ${n0(r.bandLow)}–${n0(r.bandHigh)} kcal. Don't finish under ${n0(r.floor)} or past ${n0(r.ceiling)}.</p>
-    ${rangeLine(d)}
-    <details><summary>How today's target is worked out</summary><table class="calc">${calc}</table>
-      <p class="tiny muted">Protein is set at ${esc(t.macros.basis)}. Fat follows the day type and carbs fill the rest, so hard days get more carbs.${t.warnings.length ? ` ${t.warnings.map(esc).join(". ")}.` : ""}</p></details>
+    <h2>Meals <span class="h2-n num">${n0(d.totals.kcal)} kcal</span>
+      <span class="h2-act"><button class="btn xs ghost" id="aDescribe">Describe</button><button class="btn xs ghost" id="aManual">Enter</button></span></h2>
+    ${meals ? `<ul class="list">${meals}</ul>` : `<div class="empty-card">${ICON.camera}<b>Nothing logged yet</b><p>Tap the camera to snap your plate, or share a photo from your gallery.</p></div>`}
 
-    <h2>Meals</h2>
-    ${meals ? `<ul class="list">${meals}</ul>` : `<p class="empty">Nothing logged yet. Share a photo of your plate from the gallery, or use the buttons below.</p>`}
-
-    <h2>Training</h2>
+    <h2>Training <span class="h2-act"><button class="btn xs ghost" id="addAct">+ Add</button></span></h2>
     ${acts ? `<ul class="list">${acts}</ul>` : `<p class="empty">No training logged. Until you add some, a ${esc(t.preset.label.toLowerCase())} day counts as +${n0(t.preset.defaultExerciseKcal)} kcal.</p>`}
-    <div class="row wrap" style="margin-top:10px">
-      ${d.strava.enabled ? (d.strava.connected ? `<button class="btn sm" id="syncStrava">Sync Strava</button>` : `<a class="btn sm" href="#/settings">Connect Strava</a>`) : ""}
-      <button class="btn sm" id="addAct">Add training</button>
-      ${d.strava.syncedAt ? `<span class="tiny muted">Synced at ${new Date(d.strava.syncedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>` : ""}
-    </div>
+    ${d.strava.enabled ? `<div class="row wrap tiny muted" style="margin-top:6px">${d.strava.connected ? `<button class="btn xs link" id="syncStrava">Sync Strava</button>` : `<a class="btn xs link" href="#/settings">Connect Strava</a>`}${d.strava.syncedAt ? `<span>Synced at ${new Date(d.strava.syncedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>` : ""}</div>` : ""}
 
     <h2>Weight</h2>
-    <div class="row"><input id="wKg" type="number" inputmode="decimal" step="0.1" placeholder="Morning weight in kg" value="${d.weight.today ?? ""}"><button class="btn sm" id="wSave">Save weight</button></div>
-    <p class="small muted" style="margin:10px 2px 0">${d.weight.trend ? `Your trend weight is ${n1(d.weight.trend)} kg. ` : ""}${ad.ready
-      ? `Your real burn is about <b>${n0(ad.observedTdee)} kcal</b> a day, so targets are scaled ×${ad.k}.`
-      : `Targets use formulas for now. To calibrate them to your body, ${esc(ad.reason)}.`}</p>
-    ${d.warnings?.length ? `<p class="tiny muted">${d.warnings.map(esc).join(". ")}</p>` : ""}
-
-    <div class="actions"><div class="dock">
-      <button class="snap" id="aPhoto">${ICON.camera}Photo</button>
-      <button id="aDescribe">${ICON.talk}Describe</button>
-      <button id="aManual">${ICON.pen}Manual</button>
-    </div></div>`;
-  poured = true;
+    <div class="card">
+      <div class="spread"><label class="small" for="wKg">Morning weight</label>
+        <div class="row"><input id="wKg" class="inline" style="width:108px;text-align:right" type="number" inputmode="decimal" step="0.1" placeholder="kg" value="${d.weight.today ?? ""}"><button class="btn sm" id="wSave">Save</button></div></div>
+      <p class="tiny muted" style="margin:12px 0 0">${d.weight.trend ? `Trend weight ${n1(d.weight.trend)} kg. ` : ""}${ad.ready
+        ? `Your real burn is about <b>${n0(ad.observedTdee)} kcal</b> a day, so targets are scaled ×${ad.k}.`
+        : `Targets use formulas for now. To calibrate them to your body, ${esc(ad.reason)}.`}${d.warnings?.length ? ` ${d.warnings.map(esc).join(". ")}.` : ""}</p>
+    </div>`;
 
   bindHeader(rootEl);
-  const reload = () => renderToday(rootEl);
+  if (fresh) { fresh = false; enter(rootEl); }
+  const reload = () => renderToday(rootEl, undefined, true);
 
+  $("#plan", rootEl).addEventListener("toggle", (e) => { planOpen = e.target.open; });
   $("#presets", rootEl).onclick = async (e) => {
     const id = e.target.dataset?.preset; if (!id) return;
     const next = id === d.presetId && d.presetSource === "manual" ? null : id;
@@ -208,7 +187,6 @@ function draw() {
     const meal = d.meals.find((m) => m.id === li.dataset.meal);
     openReview({ meal, date: dayState.date, onSaved: reload });
   });
-  $("#aPhoto", rootEl).onclick = () => window.dispatchEvent(new Event("macrosnap:photo"));
   $("#aDescribe", rootEl).onclick = () => openReview({ mode: "describe", date: dayState.date, onSaved: reload });
   $("#aManual", rootEl).onclick = () => openReview({ mode: "manual", date: dayState.date, onSaved: reload });
 }

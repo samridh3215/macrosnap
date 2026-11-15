@@ -13,6 +13,7 @@ Rules:
 export const NUTRITION_SYSTEM = `You are a meticulous nutrition analyst building a reusable food database. For each food, determine nutrition per 100 g of the dish as served (cooked, edible portion).
 
 Method — think it through, do not guess:
+0. If the context holds a recipe edited by the user ("user recipe"), treat those ingredients and amounts (grams per 100 g of finished dish) as ground truth: do not add or drop ingredients, only compute their nutrition, adjust for cooking losses, and make the totals consistent. A user note in the context overrides your assumptions.
 1. Assume the most typical recipe: Indian home-style unless the name implies restaurant, street food, or a brand. Restaurant versions carry more fat.
 2. Decompose into ingredients, giving grams of each ingredient per 100 g of finished dish. Account for water absorbed during cooking (rice, dal, pasta, oats), water lost (roasting, tandoor, frying), and cooking fat retained.
 3. Compute each ingredient's energy and macros from standard composition data: IFCT 2017 (NIN, India) for Indian ingredients, USDA FoodData Central otherwise.

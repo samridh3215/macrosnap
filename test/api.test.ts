@@ -19,6 +19,14 @@ beforeEach(() => {
 });
 
 describe("API", () => {
+  it("reports which profile fields are still missing", async () => {
+    expect((await call("GET", "/api/me")).body.profileMissing).toEqual(["weightKg", "heightCm", "age", "sex"]);
+    const r = await call("PUT", "/api/me", { profile: { weightKg: 75, heightCm: 178 } });
+    expect(r.body.profileMissing).toEqual(["age", "sex"]);
+    await call("PUT", "/api/me", { profile: { weightKg: 75, heightCm: 178, age: 23, sex: "male" } });
+    expect((await call("GET", "/api/me")).body.profileMissing).toEqual([]);
+  });
+
   it("full day: profile → analyze → save → dashboard reflects it", async () => {
     const date = todayIn("Asia/Kolkata");
     expect((await call("PUT", "/api/me", { profile: { weightKg: 75, heightCm: 178, age: 23, sex: "male" }, settings: { goal: { type: "cut", ratePctPerWeek: 0.5 } } })).status).toBe(200);
@@ -70,6 +78,15 @@ describe("API", () => {
     const blocked = await call("POST", "/api/foods/roti/recompute", {});
     expect(blocked.status).toBe(409);
     expect(blocked.body.error).toMatch(/verified/);
+  });
+
+  it("recompute accepts an edited recipe and validates it", async () => {
+    await call("POST", "/api/analyze", { note: "idli 40g" });
+    const ok = await call("POST", "/api/foods/idli/recompute", { recipe: [{ name: "rice batter", grams: 60 }, { name: "ghee", grams: 3 }], note: "extra ghee" });
+    expect(ok.status).toBe(200);
+    expect(ok.body.version).toBe(2);
+    const bad = await call("POST", "/api/foods/idli/recompute", { recipe: [{ name: "", grams: -5 }] });
+    expect(bad.status).toBe(400);
   });
 
   it("adaptive TDEE kicks in after enough logged days + weigh-ins", async () => {

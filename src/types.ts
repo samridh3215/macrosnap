@@ -39,7 +39,7 @@ export interface Food {
 export interface Alias {
   alias: string; // key
   target: string; // key
-  origin: "fuzzy" | "correction" | "manual" | "rename";
+  origin: "fuzzy" | "correction" | "manual" | "rename" | "judge";
   rejected: boolean; // user said "not the same" — never auto-link again
   updatedAt: string;
 }

@@ -5,7 +5,7 @@ import { serveStatic } from "@hono/node-server/serve-static";
 import { z } from "zod";
 import { config, isDevOpen } from "../config.js";
 import { computeAdaptive, type AdaptiveResult } from "../energy/adaptive.js";
-import { computeBmr, computeTargets, estimateActivity, PRESET_ORDER, presetsFor, suggestPreset } from "../energy/energy.js";
+import { computeBmr, computeTargets, profileMissing, estimateActivity, PRESET_ORDER, presetsFor, suggestPreset } from "../energy/energy.js";
 import { foodKey } from "../food/key.js";
 import type { FoodRepo } from "../food/repo.js";
 import { LLMError, type LLM } from "../llm/types.js";
@@ -134,11 +134,24 @@ export function buildApp(d: Deps) {
   /* ---------------- health / me ---------------- */
   app.get("/api/health", (c) => c.json({ ok: true, store: store.kind, cache: cache.kind, llm: llm.kind, strava: strava.stravaEnabled() }));
 
+  // Everything the user owns, as one JSON file: the way out for self-hosters.
+  app.get("/api/export", async (c) => {
+    const uid = c.get("uid");
+    const [meals, weights, days, foods] = await Promise.all([
+      store.listMeals(uid, "0000-01-01", "9999-12-31"),
+      store.listWeights(uid, "0000-01-01", "9999-12-31"),
+      store.listDays(uid, "0000-01-01", "9999-12-31"),
+      store.listFoods({ limit: 1_000_000 }),
+    ]);
+    c.header("content-disposition", `attachment; filename="macrosnap-export-${now().slice(0, 10)}.json"`);
+    return c.json({ exportedAt: now(), uid, user: await user(uid), meals, weights, days, foods });
+  });
+
   app.get("/api/me", async (c) => {
     const u = await user(c.get("uid"));
     return c.json({
       uid: u.uid, profile: u.profile, settings: u.settings, presets: presetsFor(u.settings), presetOrder: PRESET_ORDER,
-      bmr: computeBmr(u.profile), strava: { enabled: strava.stravaEnabled(), connected: !!u.strava, athlete: u.strava?.athleteName ?? null },
+      bmr: computeBmr(u.profile), profileMissing: profileMissing(u.profile), strava: { enabled: strava.stravaEnabled(), connected: !!u.strava, athlete: u.strava?.athleteName ?? null },
       serverHasOpenRouterKey: !!config.openrouterKey, llm: llm.kind,
     });
   });
@@ -151,7 +164,7 @@ export function buildApp(d: Deps) {
     u.updatedAt = now();
     await store.putUser(u);
     await bump(u.uid);
-    return c.json({ ok: true, profile: u.profile, settings: u.settings, bmr: computeBmr(u.profile), presets: presetsFor(u.settings) });
+    return c.json({ ok: true, profile: u.profile, settings: u.settings, bmr: computeBmr(u.profile), profileMissing: profileMissing(u.profile), presets: presetsFor(u.settings) });
   });
 
   /* ---------------- models ---------------- */
@@ -228,8 +241,12 @@ export function buildApp(d: Deps) {
 
   app.post("/api/foods/:key/recompute", async (c) => {
     const u = await user(c.get("uid"));
-    const { force } = await json(c, z.object({ force: z.boolean().default(false) }));
-    return c.json(await nutrition.recompute(c.req.param("key"), ctxOf(c, u), force));
+    const { force, recipe, note } = await json(c, z.object({
+      force: z.boolean().default(false),
+      recipe: z.array(z.object({ name: z.string().trim().min(1).max(80), grams: z.number().positive().max(1000) })).max(40).optional(),
+      note: z.string().max(300).optional(),
+    }));
+    return c.json(await nutrition.recompute(c.req.param("key"), ctxOf(c, u), force, { recipe, note }));
   });
 
   app.delete("/api/foods/:key", async (c) => { await repo.remove(c.req.param("key")); return c.json({ ok: true }); });

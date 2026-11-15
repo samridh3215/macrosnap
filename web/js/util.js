@@ -45,12 +45,29 @@ export async function blobToImage(blob) {
   try { const img = new Image(); img.src = url; await img.decode(); return img; }
   finally { setTimeout(() => URL.revokeObjectURL(url), 1500); }
 }
-export function resize(img, max, q) {
-  const s = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight));
-  const c = document.createElement("canvas");
-  c.width = Math.round(img.naturalWidth * s); c.height = Math.round(img.naturalHeight * s);
-  c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
-  return c.toDataURL("image/jpeg", q);
+/** Downscale to fit `max` in halving steps (one big jump from a 12 MP photo aliases and looks soft).
+ *  Takes an image or a canvas, returns a canvas, so smaller sizes can be derived from a larger one. */
+export function scaleTo(src, max) {
+  const sw = src.naturalWidth || src.width, sh = src.naturalHeight || src.height;
+  const s = Math.min(1, max / Math.max(sw, sh));
+  const w = Math.round(sw * s), h = Math.round(sh * s);
+  let cur = src, cw = sw, ch = sh;
+  const draw = (to, tw, th) => {
+    const c = document.createElement("canvas"); c.width = tw; c.height = th;
+    const x = c.getContext("2d"); x.imageSmoothingQuality = "high"; x.drawImage(to, 0, 0, tw, th);
+    return c;
+  };
+  while (cw / 2 > w) { const next = draw(cur, Math.round(cw / 2), Math.round(ch / 2)); if (cur !== src) cur.width = 0; cur = next; cw = cur.width; ch = cur.height; }
+  const out = draw(cur, w, h); if (cur !== src) cur.width = 0;
+  return out;
+}
+export const resize = (img, max, q) => scaleTo(img, max).toDataURL("image/jpeg", q);
+
+/** Replays the arrival animation on an element's children (CSS: .enter). */
+export function enter(el) {
+  if (!el) return;
+  el.classList.remove("enter"); void el.offsetWidth; el.classList.add("enter");
+  clearTimeout(el._enter); el._enter = setTimeout(() => el.classList.remove("enter"), 1000);
 }
 
 export function guessMeal() {
