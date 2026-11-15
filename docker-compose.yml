@@ -1,0 +1,28 @@
+# Self-hosted Macro Snap: the app, a Redis cache, and a SQLite file on a volume.
+# Usage:  cp .env.example .env   (set APP_TOKEN, OPENROUTER_API_KEY)  then  docker compose up -d
+services:
+  macrosnap:
+    build: .
+    ports: ["127.0.0.1:8080:8080"]
+    env_file: [.env]
+    environment:
+      SQLITE_FILE: /data/macrosnap.db
+      REDIS_URL: redis://redis:6379
+    volumes:
+      - macrosnap-data:/data
+    depends_on:
+      redis:
+        condition: service_started # app must start even if Redis is down
+    restart: unless-stopped
+  redis:
+    image: redis:7-alpine
+    # Cache only: SQLite is the system of record, so losing Redis loses nothing.
+    command: ["redis-server", "--save", "", "--appendonly", "no", "--maxmemory", "128mb", "--maxmemory-policy", "allkeys-lru"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+volumes:
+  macrosnap-data:

@@ -19,8 +19,8 @@ export async function openCamera({ onPhoto, onPickFile }) {
     return onPickFile();
   }
 
-  const body = openSheet(`<h3>Take a photo</h3>
-    <video id="camVideo" class="hero" style="max-height:none;background:#000" autoplay playsinline muted></video>
+  const body = openSheet(`<h3>Snap your plate</h3>
+    <video id="camVideo" class="cam-video" autoplay playsinline muted></video>
     <div class="foot">
       <button class="btn ghost" id="camGallery">Gallery</button>
       <span class="grow"></span>

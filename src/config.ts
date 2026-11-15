@@ -28,6 +28,7 @@ export const config = {
   },
   redisUrl: process.env.REDIS_URL || "", // rediss://default:pass@host:port
   dataFile: process.env.DATA_FILE || "./data/dev-store.json",
+  sqliteFile: process.env.SQLITE_FILE || "", // self-hosted store, e.g. ./data/macrosnap.db
 
   openrouterKey: process.env.OPENROUTER_API_KEY || "",
   fakeLLM: process.env.FAKE_LLM === "1",
@@ -35,6 +36,15 @@ export const config = {
   strava: {
     clientId: process.env.STRAVA_CLIENT_ID || "",
     clientSecret: process.env.STRAVA_CLIENT_SECRET || "",
+  },
+
+  judge: {
+    mode: (process.env.JUDGE || "off") as "jev" | "heuristic" | "off",
+    model: process.env.JEV_MODEL || "typesafe/jev-1.13", // docs examples use 1.13; set JEV_MODEL=typesafe/jev-1.14 to pin newer
+    auto: Number(process.env.JUDGE_AUTO || 0.85), // same-dish probability needed to auto-link
+    none: Number(process.env.JUDGE_NONE || 0.85), // "none of these" probability needed to skip the prompt
+    plausible: 0.8,
+    timeoutMs: 3000,
   },
 
   food: {

@@ -2,7 +2,8 @@ import { config } from "../config.js";
 import { getJSON, setJSON, type Cache } from "../storage/cache.js";
 import { now, type Store } from "../storage/store.js";
 import type { Alias, Food, MatchInfo } from "../types.js";
-import { bestMatch, foodKey } from "./key.js";
+import type { Judge } from "../judge/judge.js";
+import { bestMatch, foodKey, similarity } from "./key.js";
 
 const CK = {
   food: (k: string) => `food:${k}`,
@@ -22,7 +23,7 @@ export type Resolution =
  * Also owns aliases (fuzzy/correction/rename links), the correction-learning loop and re-keying.
  */
 export class FoodRepo {
-  constructor(private store: Store, private cache: Cache) {}
+  constructor(private store: Store, private cache: Cache, readonly judge: Judge | null = null) {}
 
   async get(key: string): Promise<Food | null> {
     if (!key) return null;
@@ -80,7 +81,7 @@ export class FoodRepo {
    * @param opts.fuzzy  "full" = auto-link ≥ fuzzyAuto and suggest ≥ fuzzySuggest; "strict" = only auto-link (user-typed names)
    * @param opts.rejectKeys  candidates the user already said "not the same" to
    */
-  async resolve(name: string, opts: { fuzzy?: "full" | "strict" | "off"; rejectKeys?: string[] } = {}): Promise<Resolution> {
+  async resolve(name: string, opts: { fuzzy?: "full" | "strict" | "off"; rejectKeys?: string[]; apiKey?: string } = {}): Promise<Resolution> {
     const lookupKey = foodKey(name);
     const fuzzy = opts.fuzzy ?? "full";
     if (!lookupKey) return { kind: "miss", lookupKey, name };
@@ -112,7 +113,36 @@ export class FoodRepo {
           return { kind: "hit", food, match: { type: "fuzzy", auto: true, score: round2(best.score), candidateName: food.name }, lookupKey };
         }
       }
-      if (fuzzy === "full" && best && best.score >= config.food.fuzzySuggest) {
+      let judgedNone = false;
+      if (this.judge) {
+        const idx = await this.index();
+        const shortlist = idx
+          .filter((e) => e.key !== lookupKey && !exclude.has(e.key))
+          .map((e) => ({ ...e, s: similarity(lookupKey, e.key) }))
+          .filter((e) => e.s >= 0.35).sort((a, b) => b.s - a.s).slice(0, 8);
+        // Synonyms share no words ("chana masala" vs "chole"), so top up with the library's most-used foods.
+        const keys = shortlist.map((e) => e.key);
+        if (keys.length < 8) {
+          for (const f of await this.store.listFoods({ limit: 8 })) {
+            if (keys.length >= 8) break;
+            if (f.key !== lookupKey && !exclude.has(f.key) && !keys.includes(f.key)) keys.push(f.key);
+          }
+        }
+        if (keys.length) {
+          const cands = (await Promise.all(keys.map((k) => this.get(k)))).filter((f): f is Food => !!f)
+            .map((f) => ({ key: f.key, name: f.name, aliases: f.aliases }));
+          const v = await this.judge.sameFood({ query: name, candidates: cands }, opts.apiKey).catch(() => ({ choice: null, p: 0 }));
+          if (v.choice && v.choice !== "none" && v.p >= config.judge.auto) {
+            const food = await this.get(v.choice);
+            if (food) {
+              await this.putAlias({ alias: lookupKey, target: food.key, origin: "judge", rejected: false, updatedAt: now() });
+              return { kind: "hit", food, match: { type: "fuzzy", auto: true, score: round2(v.p), candidateName: food.name }, lookupKey };
+            }
+          }
+          if (v.choice === "none" && v.p >= config.judge.none) judgedNone = true;
+        }
+      }
+      if (!judgedNone && fuzzy === "full" && best && best.score >= config.food.fuzzySuggest) {
         const food = await this.get(best.key);
         if (food) return { kind: "suggest", food, match: { type: "fuzzy", auto: false, score: round2(best.score), candidateName: food.name }, lookupKey };
       }

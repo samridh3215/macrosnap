@@ -50,7 +50,7 @@ export class RedisCache implements Cache {
   readonly kind = "redis";
   private r: Redis;
   constructor(url: string) {
-    this.r = new Redis(url, { maxRetriesPerRequest: 2, enableReadyCheck: true, lazyConnect: false });
+    this.r = new Redis(url, { maxRetriesPerRequest: 1, enableOfflineQueue: false, commandTimeout: 500, enableReadyCheck: true, lazyConnect: false });
     this.r.on("error", (e) => console.warn(`[redis] ${e.message}`));
   }
   async get(key: string) { return this.r.get(key); }
@@ -71,8 +71,15 @@ export class RedisCache implements Cache {
 export class SafeCache implements Cache {
   constructor(private inner: Cache) {}
   get kind() { return this.inner.kind; }
+  /** After a failure, skip the cache for a few seconds so an outage costs one error, not one per command. */
+  private downUntil = 0;
   private async safe<T>(fn: () => Promise<T>, fallback: T): Promise<T> {
-    try { return await fn(); } catch (e) { console.warn(`[cache] ${(e as Error).message}`); return fallback; }
+    if (Date.now() < this.downUntil) return fallback;
+    try { return await fn(); } catch (e) {
+      this.downUntil = Date.now() + 5000;
+      console.warn(`[cache] ${(e as Error).message} (skipping cache for 5 s)`);
+      return fallback;
+    }
   }
   get(k: string) { return this.safe(() => this.inner.get(k), null); }
   set(k: string, v: string, t?: number) { return this.safe(() => this.inner.set(k, v, t), undefined); }

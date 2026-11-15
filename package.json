@@ -1,11 +1,11 @@
 {
   "name": "macrosnap",
   "version": "1.0.0",
-  "description": "Macro Snap — share-sheet calorie & macro tracker (PWA + OpenRouter + Capella + Redis)",
+  "description": "Macro Snap: share a food photo, get trustworthy calories and macros. Self-hosted PWA (SQLite + Redis cache + OpenRouter).",
   "main": "dist/server.js",
   "scripts": {
     "dev": "tsx watch src/server.ts",
-    "dev:fake": "FAKE_LLM=1 tsx watch src/server.ts",
+    "dev:fake": "FAKE_LLM=1 DATA_FILE=./data/fake-store.json tsx watch src/server.ts",
     "build": "tsc -p .",
     "start": "node dist/server.js",
     "test": "vitest run",
@@ -16,7 +16,6 @@
   "license": "ISC",
   "dependencies": {
     "@hono/node-server": "^2.1.8",
-    "couchbase": "^4.7.2",
     "hono": "^4.13.18",
     "ioredis": "^6.0.0",
     "zod": "^4.6.7"
@@ -29,6 +28,9 @@
   },
   "type": "module",
   "engines": {
-    "node": ">=20"
+    "node": ">=22.13"
+  },
+  "optionalDependencies": {
+    "couchbase": "^4.7.2"
   }
 }
