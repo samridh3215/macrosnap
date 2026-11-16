@@ -1,4 +1,4 @@
-const VERSION = "macrosnap-v27";
+const VERSION = "macrosnap-v28";
 const SHELL = ["/", "/index.html", "/styles.css", "/manifest.webmanifest", "/icons/icon-192.png",
   "/js/main.js", "/js/api.js", "/js/util.js", "/js/today.js", "/js/review.js", "/js/foods.js", "/js/trends.js", "/js/settings.js", "/js/charts.js", "/js/camera.js", "/js/onboarding.js", "/js/login.js"];
 
