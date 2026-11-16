@@ -8,11 +8,12 @@ export function saveLocal(patch) {
 
 export async function api(method, path, body) {
   const headers = { "content-type": "application/json" };
+  // Hosted servers sign you in with a session cookie (sent automatically); the token is for self-hosted ones.
   if (local.token) headers.authorization = `Bearer ${local.token}`;
   if (local.orKey) headers["x-openrouter-key"] = local.orKey;
   const r = await fetch(path, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
   const data = await r.json().catch(() => ({ error: `HTTP ${r.status}` }));
-  if (!r.ok) { const e = new Error(data.error || `HTTP ${r.status}`); e.status = r.status; throw e; }
+  if (!r.ok) { const e = new Error(data.error || `HTTP ${r.status}`); e.status = r.status; e.code = data.code; throw e; }
   return data;
 }
 

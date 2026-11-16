@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "dev:fake": "FAKE_LLM=1 DATA_FILE=./data/fake-store.json tsx watch src/server.ts",
+    "dev:hosted": "PORT=8090 MODE=hosted FAKE_LLM=1 SQLITE_FILE=./data/hosted-dev.db PUBLIC_URL=http://localhost:8090 SESSION_SECRET=dev-only-hosted-secret-not-for-production tsx watch src/server.ts",
     "build": "tsc -p .",
     "start": "node dist/server.js",
     "test": "vitest run",

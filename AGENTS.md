@@ -24,5 +24,5 @@ Write there, in the vault's formats:
 - `npm run dev:fake` runs with a fake AI and an in-memory store, no keys needed.
 - Storage: SQLite when `SQLITE_FILE` is set (Couchbase overrides it if configured). Redis is a cache only; losing it must never break the app.
 - The Jev judge is off by default (`JUDGE=jev` to enable) and must never block logging; it falls back to similarity rules.
-- Out of scope for v1: hosted version for other people, image embeddings and photo memory. New ideas go to the v2 backlog in the vault, not into this weekend's work.
-- This folder is not a git repo yet; don't commit unless asked.
+- Out of scope for v1: image embeddings and photo memory. The hosted multi-user version lives on the `prod` branch behind `MODE=hosted` (`npm run dev:hosted` to try it); self-hosted behaviour must not change when `MODE` is unset. New ideas go to the v2 backlog in the vault, not into this weekend's work.
+- Git repo, `main` tracks `origin` (GitHub `samridh3215/macrosnap`). Don't commit or push unless asked.

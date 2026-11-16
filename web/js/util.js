@@ -29,6 +29,12 @@ export function openSheet(html, id = "sheet") {
 }
 export const closeSheet = (id = "sheet") => { const d = $(`#${id}`); if (d.open) d.close(); };
 
+/** Drinks and other pourables are shown per 100 ml (1 ml ≈ 1 g for the maths). Display only. */
+const LIQUID = /\b(beverage|drinks?|juice|milk|lassi|chaas|buttermilk|shakes?|smoothie|soda|cola|coffee|tea|chai|water|soup|broth|rasam|kombucha|beer|wine|whisky|vodka|rum)\b/i;
+const SOLID = /\b(powder|chocolate|cake|bar|cookies?|biscuits?|bread|cheese|paneer|curd|yogurt|khoya|peda|barfi|leaves)\b/i;
+export const isLiquid = (f) => !SOLID.test(f?.name || "") && (/beverage|drink/i.test(f?.category || "") || LIQUID.test(f?.name || ""));
+export const unitOf = (f) => (isLiquid(f) ? "ml" : "g");
+
 export function scale(per100g, grams) {
   const f = (Number(grams) || 0) / 100;
   return { kcal: Math.round(per100g.kcal * f), protein: r1(per100g.protein * f), carbs: r1(per100g.carbs * f), fat: r1(per100g.fat * f), fiber: r1(per100g.fiber * f) };

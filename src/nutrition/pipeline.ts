@@ -10,7 +10,8 @@ import { fixupUser, IDENTIFY_SYSTEM, NUTRITION_SYSTEM, nutritionUser } from "./p
 import { IdentifyOut, NutritionOut } from "./schemas.js";
 import { scale, validateNutrition } from "./validate.js";
 
-export interface Ctx { apiKey?: string; settings: Settings }
+/** apiKey: the key to call OpenRouter with (the user's own, or the platform key once allowed). lib: whose food library ("" = shared). */
+export interface Ctx { apiKey?: string; settings: Settings; lib?: string }
 
 interface ItemRequest {
   name: string;
@@ -51,6 +52,8 @@ export class NutritionService {
 
   constructor(private repo: FoodRepo, private llm: LLM) {}
 
+  private lib(ctx: Ctx) { return this.repo.for(ctx.lib ?? ""); }
+
   models(ctx: Ctx) { return resolveModels(this.llm, ctx.settings, ctx.apiKey); }
 
   /** Photo and/or text → itemised meal with per-item provenance (cache / new / fuzzy). */
@@ -77,7 +80,7 @@ export class NutritionService {
     const labelWarnings: string[] = [];
     for (const [i, r] of reqs.entries()) {
       if (!r.label) continue;
-      const it = await this.fromLabel(r, id.model, labelWarnings).catch(() => null);
+      const it = await this.fromLabel(r, id.model, labelWarnings, ctx).catch(() => null);
       if (it) labelled.set(i, it);
     }
     const rest = reqs.filter((_, i) => !labelled.has(i));
@@ -95,13 +98,13 @@ export class NutritionService {
    * A product read from its nutrition label goes into the library as printed (verified, so it is never re-estimated).
    * If you already saved your own numbers for it, those win.
    */
-  private async fromLabel(req: ItemRequest, model: string, warnings: string[]): Promise<MealItem | null> {
+  private async fromLabel(req: ItemRequest, model: string, warnings: string[], ctx: Ctx): Promise<MealItem | null> {
     const label = req.label!;
     const key = foodKey(req.name);
     if (!key || !(label.per100g.kcal > 0)) return null;
-    const existing = await this.repo.get(key);
+    const existing = await this.lib(ctx).get(key);
     if (existing?.verified && existing.source.kind === "user") {
-      void this.repo.recordHit(existing).catch(() => {});
+      void this.lib(ctx).recordHit(existing).catch(() => {});
       return this.itemFrom(existing, req, { type: "exact" }, key);
     }
     const per100g = { ...label.per100g, fiber: label.per100g.fiber || 0 };
@@ -115,12 +118,12 @@ export class NutritionService {
       verified: true, hits: (existing?.hits ?? 0) + 1, createdAt: existing?.createdAt ?? now(), updatedAt: now(), version: (existing?.version ?? 0) + 1,
     };
     if (!validation.ok) warnings.push(`"${food.name}" label numbers don't add up (${validation.issues[0]}). Check they were read right.`);
-    await this.repo.put(food);
+    await this.lib(ctx).put(food);
     return this.itemFrom(food, { ...req, grams: req.grams || label.serving_grams || undefined }, { type: "label" }, key);
   }
 
   private async resolveMany(reqs: ItemRequest[], ctx: Ctx, models: ResolvedModels) {
-    const resolutions = await Promise.all(reqs.map((r) => this.repo.resolve(r.name, { apiKey: ctx.apiKey })));
+    const resolutions = await Promise.all(reqs.map((r) => this.lib(ctx).resolve(r.name, { apiKey: ctx.apiKey })));
     const misses = new Map<string, { key: string; name: string; context: string }>();
     resolutions.forEach((res, i) => {
       if (res.kind === "miss" && res.lookupKey && !misses.has(res.lookupKey)) {
@@ -140,7 +143,7 @@ export class NutritionService {
       else if (res.kind === "suggest") { food = res.food; match = res.match; suggestions++; }
       else { food = foods.get(res.lookupKey) ?? null; match = { type: "new" }; }
       if (food) {
-        if (res.kind === "hit") void this.repo.recordHit(food).catch(() => {});
+        if (res.kind === "hit") void this.lib(ctx).recordHit(food).catch(() => {});
         items.push(this.itemFrom(food, req, match, res.lookupKey));
       } else {
         warnings.push(`Couldn't compute "${req.name}" — enter its values manually.`);
@@ -161,7 +164,7 @@ export class NutritionService {
     const todo: typeof list = [];
     const waits: Array<Promise<void>> = [];
     for (const it of list) {
-      const p = this.inflight.get(it.key);
+      const p = this.inflight.get(`${ctx.lib ?? ""}|${it.key}`);
       if (p) waits.push(p.then((f) => { if (f) foods.set(it.key, f); }));
       else todo.push(it);
     }
@@ -169,7 +172,7 @@ export class NutritionService {
     if (todo.length) {
       const job = this.computeBatch(todo, ctx, models);
       const perKey = new Map(todo.map((t) => [t.key, job.then((r) => r.foods.get(t.key) ?? null)]));
-      for (const [k, p] of perKey) this.inflight.set(k, p);
+      for (const [k, p] of perKey) this.inflight.set(`${ctx.lib ?? ""}|${k}`, p);
       try {
         const r = await job;
         r.foods.forEach((f, k) => foods.set(k, f));
@@ -178,7 +181,7 @@ export class NutritionService {
       } catch (e) {
         warnings.push(`Nutrition model failed: ${(e as Error).message}`);
       } finally {
-        for (const k of perKey.keys()) this.inflight.delete(k);
+        for (const k of perKey.keys()) this.inflight.delete(`${ctx.lib ?? ""}|${k}`);
       }
     }
     await Promise.all(waits);
@@ -262,10 +265,10 @@ export class NutritionService {
         version: 1,
       };
       if (!validation.ok) warnings.push(`"${food.name}" failed checks (${validation.issues[0]}) — review it.`);
-      await this.repo.put(food);
+      await this.lib(ctx).put(food);
       // The model's own canonical name also points here, so it resolves next time.
-      if (modelKey && modelKey !== t.key && !(await this.repo.get(modelKey))) {
-        await this.repo.putAlias({ alias: modelKey, target: t.key, origin: "fuzzy", rejected: false, updatedAt: now() });
+      if (modelKey && modelKey !== t.key && !(await this.lib(ctx).get(modelKey))) {
+        await this.lib(ctx).putAlias({ alias: modelKey, target: t.key, origin: "fuzzy", rejected: false, updatedAt: now() });
       }
       foods.set(t.key, food);
     }
@@ -286,16 +289,16 @@ export class NutritionService {
     let learned: { promoted: boolean; count: number } | null = null;
 
     if (input.confirmKey) {
-      await this.repo.confirmLink(lookupKey, input.confirmKey);
-      const food = await this.repo.get(input.confirmKey);
+      await this.lib(ctx).confirmLink(lookupKey, input.confirmKey);
+      const food = await this.lib(ctx).get(input.confirmKey);
       if (food) return { item: this.itemFrom(food, req, { type: "alias", candidateName: food.name }, lookupKey), learned, usage: zeroUsage() };
     }
-    if (input.rejectKey) await this.repo.rejectLink(newKey, input.rejectKey);
+    if (input.rejectKey) await this.lib(ctx).rejectLink(newKey, input.rejectKey);
     if (input.lookupKey && newKey && newKey !== input.lookupKey) {
-      learned = await this.repo.learnCorrection(input.lookupKey, newKey, input.previousKey);
+      learned = await this.lib(ctx).learnCorrection(input.lookupKey, newKey, input.previousKey);
     }
 
-    const res: Resolution = await this.repo.resolve(input.name, { fuzzy: "strict", rejectKeys: input.rejectKey ? [input.rejectKey] : [], apiKey: ctx.apiKey });
+    const res: Resolution = await this.lib(ctx).resolve(input.name, { fuzzy: "strict", rejectKeys: input.rejectKey ? [input.rejectKey] : [], apiKey: ctx.apiKey });
     if (res.kind === "hit") return { item: this.itemFrom(res.food, req, res.match, lookupKey), learned, usage: zeroUsage() };
 
     const { foods, usage, warnings } = await this.compute([{ key: res.lookupKey, name: input.name, context: input.portion || "" }], ctx);
@@ -306,7 +309,7 @@ export class NutritionService {
 
   /** Re-derive a library food (e.g. after improving prompts or switching models). Verified foods need force. */
   async recompute(key: string, ctx: Ctx, force = false, edit?: { recipe?: Array<{ name: string; grams: number }>; note?: string }): Promise<Food> {
-    const old = await this.repo.get(key);
+    const old = await this.lib(ctx).get(key);
     if (!old) throw Object.assign(new Error("food not found"), { status: 404 });
     if (old.verified && !force) throw Object.assign(new Error("food is verified — pass force to recompute"), { status: 409 });
     const models = await this.models(ctx);
@@ -318,7 +321,7 @@ export class NutritionService {
     const fresh = r.foods.get(key);
     if (!fresh) throw new Error(r.warnings[0] || "recompute failed");
     const merged: Food = { ...fresh, aliases: [...new Set([...old.aliases, ...fresh.aliases])], hits: old.hits, createdAt: old.createdAt, version: old.version + 1, verified: false };
-    await this.repo.put(merged);
+    await this.lib(ctx).put(merged);
     return merged;
   }
 
