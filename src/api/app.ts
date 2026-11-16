@@ -197,12 +197,30 @@ export function buildApp(d: Deps) {
   });
 
   /* ---------------- food library ---------------- */
-  app.get("/api/foods", async (c) => c.json((await store.listFoods({ q: c.req.query("q"), limit: Number(c.req.query("limit") || 200) })).map(foodSummary)));
+  /** How many saved meals use each food. Counted from the meals themselves, so deleting or editing a meal is reflected. */
+  async function loggedCounts(uid: string): Promise<Map<string, number>> {
+    const n = new Map<string, number>();
+    for (const m of await store.listMeals(uid, "0000-01-01", "9999-12-31"))
+      for (const k of new Set(m.items.map((i) => i.key).filter(Boolean))) n.set(k, (n.get(k) ?? 0) + 1);
+    return n;
+  }
+
+  app.get("/api/foods", async (c) => {
+    const [foods, counts] = await Promise.all([
+      store.listFoods({ q: c.req.query("q"), limit: Number(c.req.query("limit") || 200) }),
+      loggedCounts(c.get("uid")),
+    ]);
+    const rows = foods.map((f) => ({ ...foodSummary(f), hits: counts.get(f.key) ?? 0 }));
+    // Search results keep their relevance order; the plain list shows what you log most first.
+    if (!c.req.query("q")) rows.sort((a, b) => b.hits - a.hits || a.name.localeCompare(b.name));
+    return c.json(rows);
+  });
 
   app.get("/api/foods/:key", async (c) => {
     const f = await repo.get(c.req.param("key"));
     if (!f) return c.json({ error: "not found" }, 404);
-    return c.json({ ...f, linkedAliases: await store.aliasesTo(f.key) });
+    const [linkedAliases, counts] = await Promise.all([store.aliasesTo(f.key), loggedCounts(c.get("uid"))]);
+    return c.json({ ...f, hits: counts.get(f.key) ?? 0, linkedAliases });
   });
 
   app.post("/api/foods", async (c) => {
