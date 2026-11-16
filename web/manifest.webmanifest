@@ -21,7 +21,8 @@
     "params": { "title": "title", "text": "text", "files": [{ "name": "image", "accept": ["image/*"] }] }
   },
   "shortcuts": [
-    { "name": "Log a meal", "url": "/#/today?add=photo" },
-    { "name": "Food library", "url": "/#/foods" }
+    { "name": "Snap", "short_name": "Snap", "url": "/#/today?add=photo", "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Manual entry", "short_name": "Manual", "url": "/#/today?add=manual", "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Food library", "short_name": "Foods", "url": "/#/foods", "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }] }
   ]
 }

@@ -1,6 +1,6 @@
 import { del, get, post, put } from "./api.js";
 import { openReview } from "./review.js";
-import { $, closeSheet, enter, esc, n0, n1, openSheet, scale, toast, today, uid } from "./util.js";
+import { $, closeSheet, enter, esc, n0, n1, openSheet, scale, toast, today, uid, unitOf } from "./util.js";
 
 /** The shared food library (Capella-backed): browse, fix names, correct numbers, verify, recompute. */
 let q = "";
@@ -22,8 +22,8 @@ async function load(root) {
     const foods = await get(`/api/foods${q ? `?q=${encodeURIComponent(q)}` : ""}`);
     list.innerHTML = foods.length ? foods.map((f) => `<li class="li tap" data-key="${esc(f.key)}">
       <div class="grow"><div class="name">${esc(f.name)}${f.verified ? ` <span class="badge b-ver">verified</span>` : ""}${!f.ok ? ` <span class="badge b-warn">check</span>` : ""}${f.confidence === "low" ? ` <span class="badge b-fuzzy">low confidence</span>` : ""}</div>
-        <div class="sub"><span class="m-p">${n1(f.per100g.protein)}p</span> <span class="m-c">${n1(f.per100g.carbs)}c</span> <span class="m-f">${n1(f.per100g.fat)}f</span>${f.unit ? ` · 1 ${esc(f.unit.name)} = ${n0(f.unit.grams)} g` : ""} · logged ${f.hits}×</div></div>
-      <div class="kcal">${n0(f.per100g.kcal)}<small>per 100 g</small></div></li>`).join("")
+        <div class="sub"><span class="m-p">${n1(f.per100g.protein)}p</span> <span class="m-c">${n1(f.per100g.carbs)}c</span> <span class="m-f">${n1(f.per100g.fat)}f</span>${f.unit ? ` · 1 ${esc(f.unit.name)} = ${n0(f.unit.grams)} ${unitOf(f)}` : ""} · logged ${f.hits}×</div></div>
+      <div class="kcal">${n0(f.per100g.kcal)}<small>per 100 ${unitOf(f)}</small></div></li>`).join("")
       : `<li class="empty">${q ? "No matches." : "Nothing here yet. Foods appear as you log meals."}</li>`;
     list.querySelectorAll("[data-key]").forEach((li) => li.onclick = () => openFoodEditor(li.dataset.key, () => load(root)));
     if (!list.dataset.seen) { list.dataset.seen = "1"; enter(list); }
@@ -37,7 +37,7 @@ export async function openFoodEditor(key, onDone) {
   const body = openSheet(`<div class="empty"><span class="spin"></span>Loading…</div>`, "modal");
   let f;
   try { f = await get(`/api/foods/${encodeURIComponent(key)}`); } catch (e) { body.innerHTML = `<p>${esc(e.message)}</p>`; return; }
-  const p = f.per100g;
+  const p = f.per100g, u = unitOf(f);
   let recipe = f.ingredients.map((x) => ({ name: x.name, grams: x.grams }));
   let recipeDirty = false;
 
@@ -53,14 +53,14 @@ export async function openFoodEditor(key, onDone) {
   body.innerHTML = `<div class="pane">
     <header class="sheet-head"><h3>${esc(f.name)}</h3><button class="icon-btn" id="feClose" aria-label="Close">${X}</button></header>
     <div class="sheet-scroll">
-      <div class="fe-label">Per 100 g</div>
+      <div class="fe-label">Per 100 ${u}</div>
       <div class="fe-macros">
         ${[["kcal", "kcal", p.kcal, ""], ["protein", "Protein", p.protein, "m-p"], ["carbs", "Carbs", p.carbs, "m-c"], ["fat", "Fat", p.fat, "m-f"], ["fiber", "Fiber", p.fiber, ""]]
           .map(([k, l, v, c]) => `<label class="${c}"><span>${l}</span><input class="inline" data-k="${k}" type="number" step="any" min="0" value="${v}"></label>`).join("")}
       </div>
       <div id="feCheck" class="small fe-check"></div>
 
-      <div class="fe-label">Recipe <span class="tiny">grams per 100 g of the finished dish</span></div>
+      <div class="fe-label">Recipe <span class="tiny">grams per 100 ${u} of the finished dish</span></div>
       <div id="feRecipe">${recipe.map(rowHtml).join("") || `<p class="tiny muted">No recipe stored. Add ingredients and recompute.</p>`}</div>
       <button class="btn xs ghost fe-addrow" id="feAddRow">+ Add ingredient</button>
       <input id="feNote" class="fe-note" placeholder="Anything else? e.g. fried in 2 tsp ghee">
@@ -78,7 +78,7 @@ export async function openFoodEditor(key, onDone) {
           <label class="f">Category<input id="feCat" value="${esc(f.category)}"></label>
           <span></span>
           <label class="f">Piece name<input id="feUnitName" value="${esc(f.unit?.name ?? "")}" placeholder="e.g. roti"></label>
-          <label class="f">Piece weight (g)<input id="feUnitG" type="number" min="0" value="${f.unit?.grams ?? ""}"></label>
+          <label class="f">Piece ${u === "ml" ? "volume (ml)" : "weight (g)"}<input id="feUnitG" type="number" min="0" value="${f.unit?.grams ?? ""}"></label>
         </div>
         <label class="row small"><input type="checkbox" id="feVer" ${f.verified ? "checked" : ""}> Verified: lock these numbers (never recomputed automatically)</label>
         <button class="btn ghost danger sm fe-del" id="feDel">Delete this food</button>
@@ -121,7 +121,7 @@ export async function openFoodEditor(key, onDone) {
     if (["kcal", "protein", "carbs", "fat", "fiber"].some((k) => Number(v[k]) !== Number(p[k]))) return toast("Save your changes first, then log it");
     const grams = f.unit?.grams || 100;
     const item = { id: uid(), seenName: f.name, query: f.name, lookupKey: f.key, key: f.key, name: f.name,
-      portion: f.unit ? `1 ${f.unit.name}` : "100 g", grams, isAddon: false, per100g: { ...p }, totals: scale(p, grams),
+      portion: f.unit ? `1 ${f.unit.name}` : `100 ${u}`, grams, isAddon: false, per100g: { ...p }, totals: scale(p, grams),
       match: { type: "exact" }, confidence: f.confidence || "medium" };
     closeSheet("modal");
     openReview({ mode: "manual", items: [item], date: today(), onSaved: () => onDone?.(f) });
@@ -172,7 +172,7 @@ export function openFoodCreator(name = "", onDone) {
     <header class="sheet-head"><h3>Add a food</h3><button class="icon-btn" id="fcClose" aria-label="Close">${X}</button></header>
     <div class="sheet-scroll">
       <label class="f">Name<input id="fcName" value="${esc(name)}" placeholder="e.g. Whey protein powder" autocomplete="off"></label>
-      <div class="fe-label">Per 100 g</div>
+      <div class="fe-label">Per 100 <span class="fcU">g</span></div>
       <p class="tiny muted" style="margin:-4px 2px 10px">Copy them from the label, or leave them blank and tap Work it out.</p>
       <div class="fe-macros">
         ${[["kcal", "kcal", ""], ["protein", "Protein", "m-p"], ["carbs", "Carbs", "m-c"], ["fat", "Fat", "m-f"], ["fiber", "Fiber", ""]]
@@ -182,7 +182,7 @@ export function openFoodCreator(name = "", onDone) {
       <div class="fe-label" style="margin-top:18px">Piece <span class="tiny">optional, so you can log "1 scoop"</span></div>
       <div class="grid2">
         <label class="f">Piece name<input id="fcUnitName" placeholder="e.g. scoop"></label>
-        <label class="f">Piece weight (g)<input id="fcUnitG" type="number" inputmode="decimal" min="0" placeholder="e.g. 30"></label>
+        <label class="f">Piece <span class="fcUW">weight (g)</span><input id="fcUnitG" type="number" inputmode="decimal" min="0" placeholder="e.g. 30"></label>
       </div>
       <p class="gate-err small" id="fcErr" role="alert"></p>
     </div>
@@ -207,6 +207,8 @@ export function openFoodCreator(name = "", onDone) {
       : `<span class="badge b-warn">doesn't add up</span> <span class="muted">macros imply ${n0(at)} kcal, entered ${n0(v.kcal)}</span>`;
   };
   body.querySelectorAll("[data-k]").forEach((i) => (i.oninput = check));
+  const syncUnit = () => { const u = unitOf({ name: nameOf() }); body.querySelector(".fcU").textContent = u; body.querySelector(".fcUW").textContent = u === "ml" ? "volume (ml)" : "weight (g)"; };
+  $("#fcName", body).addEventListener("input", syncUnit); syncUnit();
   const done = (key) => { closeSheet("modal"); onDone?.(); if (key) openFoodEditor(key, onDone); };
   /** Same name already in the library? Ask before replacing its numbers. */
   const clash = async (n) => (await get(`/api/foods?q=${encodeURIComponent(n)}`)).find((f) => f.name.toLowerCase() === n.toLowerCase());
@@ -214,7 +216,7 @@ export function openFoodCreator(name = "", onDone) {
   $("#fcClose", body).onclick = () => closeSheet("modal");
   $("#fcSave", body).onclick = async (e) => {
     const n = nameOf(), v = read();
-    err.textContent = !n ? "Enter a name" : v.kcal == null ? "Enter at least kcal per 100 g, or tap Work it out" : "";
+    err.textContent = !n ? "Enter a name" : v.kcal == null ? `Enter at least kcal per 100 ${unitOf({ name: n })}, or tap Work it out` : "";
     if (err.textContent) return;
     const per100g = { kcal: v.kcal, protein: v.protein || 0, carbs: v.carbs || 0, fat: v.fat || 0, fiber: v.fiber || 0 };
     e.target.disabled = true;
