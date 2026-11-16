@@ -13,6 +13,7 @@ export function strictSchema(schema: z.ZodType): Record<string, unknown> {
   const walk = (n: unknown): void => {
     if (!n || typeof n !== "object") return;
     const o = n as Record<string, unknown>;
+    delete o.default; // strict mode rejects it; zod still applies defaults when parsing
     if (o.type === "object" && o.properties) {
       o.additionalProperties = false;
       o.required = Object.keys(o.properties as object);

@@ -49,7 +49,7 @@ export class FakeLLM implements LLM {
       const name = p.replace(/^\d+\s*/, "").replace(/\d+\s*g\b/, "").replace(/extra|on top|added/gi, "").trim();
       const row = TABLE[foodKey(name)];
       const g = grams || (addon ? 10 : count && row?.unit ? count * row.unit[1] : 150);
-      return { seen_name: name, canonical_name: name, portion: count ? `${count} pieces` : `${g} g`, grams: g, count, is_addon: addon, confidence: "medium" as const };
+      return { seen_name: name, canonical_name: name, portion: count ? `${count} pieces` : `${g} g`, grams: g, count, is_addon: addon, confidence: "medium" as const, label: null };
     });
     return { meal_name: items.map((i) => i.canonical_name).slice(0, 3).join(", ") || "Nothing found", items, notes: items.length ? "fake model" : "no food" };
   }

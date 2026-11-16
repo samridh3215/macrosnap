@@ -15,11 +15,11 @@ export interface Preset {
 export const PRESET_ORDER: PresetId[] = ["idle", "recovery", "easy", "normal", "hard"];
 
 export const DEFAULT_PRESETS: Record<PresetId, Preset> = {
-  idle: { id: "idle", label: "Idle", blurb: "Desk day, barely moving", neat: 1.2, defaultExerciseKcal: 0, fatPct: 0.33, proteinDeltaGPerKg: 0 },
-  recovery: { id: "recovery", label: "Active rest", blurb: "Recovery — walks, mobility, light yoga", neat: 1.3, defaultExerciseKcal: 150, fatPct: 0.3, proteinDeltaGPerKg: 0 },
-  easy: { id: "easy", label: "Easy", blurb: "Zone 2, technique, light lifting", neat: 1.35, defaultExerciseKcal: 300, fatPct: 0.28, proteinDeltaGPerKg: 0 },
-  normal: { id: "normal", label: "Normal", blurb: "Regular training session", neat: 1.375, defaultExerciseKcal: 450, fatPct: 0.25, proteinDeltaGPerKg: 0 },
-  hard: { id: "hard", label: "Hard", blurb: "Intervals, long run, HYROX sim, heavy lifting", neat: 1.4, defaultExerciseKcal: 800, fatPct: 0.2, proteinDeltaGPerKg: 0.2 },
+  idle: { id: "idle", label: "1", blurb: "Least active: desk day, barely moving", neat: 1.2, defaultExerciseKcal: 0, fatPct: 0.33, proteinDeltaGPerKg: 0 },
+  recovery: { id: "recovery", label: "2", blurb: "Light: walks, mobility, light yoga", neat: 1.3, defaultExerciseKcal: 150, fatPct: 0.3, proteinDeltaGPerKg: 0 },
+  easy: { id: "easy", label: "3", blurb: "Moderate: zone 2, technique, light lifting", neat: 1.35, defaultExerciseKcal: 300, fatPct: 0.28, proteinDeltaGPerKg: 0 },
+  normal: { id: "normal", label: "4", blurb: "Very active: a regular hard training session", neat: 1.375, defaultExerciseKcal: 450, fatPct: 0.25, proteinDeltaGPerKg: 0 },
+  hard: { id: "hard", label: "5", blurb: "Super active: intervals, long run, HYROX sim, heavy lifting", neat: 1.4, defaultExerciseKcal: 800, fatPct: 0.2, proteinDeltaGPerKg: 0.2 },
 };
 
 export function presetsFor(settings: Settings): Record<PresetId, Preset> {

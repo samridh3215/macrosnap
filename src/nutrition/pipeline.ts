@@ -21,6 +21,7 @@ interface ItemRequest {
   portion?: string;
   isAddon?: boolean;
   confidence?: Confidence;
+  label?: { per100g: Food["per100g"]; serving_grams: number | null } | null;
 }
 
 export interface AnalyzeResult {
@@ -67,15 +68,55 @@ export class NutritionService {
     const id = await this.llm.json({ apiKey: ctx.apiKey, model: models.vision, system: IDENTIFY_SYSTEM, user, schema: IdentifyOut, schemaName: "identify" });
     let usage = addUsage(zeroUsage(), id.usage);
 
-    const { items, usage: u2, warnings, stats } = await this.resolveMany(
-      id.data.items.map((i) => ({
-        name: i.canonical_name || i.seen_name, seenName: i.seen_name, grams: i.grams, count: i.count,
-        portion: i.portion, isAddon: i.is_addon, confidence: i.confidence,
-      })),
-      ctx, models,
-    );
+    const reqs: ItemRequest[] = id.data.items.map((i) => ({
+      name: i.canonical_name || i.seen_name, seenName: i.seen_name, grams: i.grams, count: i.count,
+      portion: i.portion, isAddon: i.is_addon, confidence: i.confidence, label: i.label,
+    }));
+    // Items read off a nutrition label skip estimation: the printed numbers are the source of truth.
+    const labelled = new Map<number, MealItem>();
+    const labelWarnings: string[] = [];
+    for (const [i, r] of reqs.entries()) {
+      if (!r.label) continue;
+      const it = await this.fromLabel(r, id.model, labelWarnings).catch(() => null);
+      if (it) labelled.set(i, it);
+    }
+    const rest = reqs.filter((_, i) => !labelled.has(i));
+    const { items: resolved, usage: u2, warnings, stats } = await this.resolveMany(rest, ctx, models);
     usage = addUsage(usage, u2);
-    return { mealName: id.data.meal_name, notes: id.data.notes, items, models, usage, warnings, stats: { ...stats, ms: Date.now() - t0 } };
+    let k = 0;
+    const items = reqs.map((_, i) => labelled.get(i) ?? resolved[k++]);
+    return {
+      mealName: id.data.meal_name, notes: id.data.notes, items, models, usage, warnings: [...labelWarnings, ...warnings],
+      stats: { ...stats, items: items.length, ms: Date.now() - t0 },
+    };
+  }
+
+  /**
+   * A product read from its nutrition label goes into the library as printed (verified, so it is never re-estimated).
+   * If you already saved your own numbers for it, those win.
+   */
+  private async fromLabel(req: ItemRequest, model: string, warnings: string[]): Promise<MealItem | null> {
+    const label = req.label!;
+    const key = foodKey(req.name);
+    if (!key || !(label.per100g.kcal > 0)) return null;
+    const existing = await this.repo.get(key);
+    if (existing?.verified && existing.source.kind === "user") {
+      void this.repo.recordHit(existing).catch(() => {});
+      return this.itemFrom(existing, req, { type: "exact" }, key);
+    }
+    const per100g = { ...label.per100g, fiber: label.per100g.fiber || 0 };
+    const validation = validateNutrition(per100g);
+    const serving = label.serving_grams && label.serving_grams > 0 ? { name: "serving", grams: label.serving_grams } : null;
+    const food: Food = {
+      key, name: titleCase(req.name), aliases: existing?.aliases ?? [], category: existing?.category ?? "packaged",
+      per100g, unit: existing?.unit ?? serving, ingredients: [],
+      assumptions: "Read from the nutrition label in your photo.", references: ["nutrition label"],
+      confidence: validation.ok ? "high" : "medium", validation, source: { kind: "label", model },
+      verified: true, hits: (existing?.hits ?? 0) + 1, createdAt: existing?.createdAt ?? now(), updatedAt: now(), version: (existing?.version ?? 0) + 1,
+    };
+    if (!validation.ok) warnings.push(`"${food.name}" label numbers don't add up (${validation.issues[0]}). Check they were read right.`);
+    await this.repo.put(food);
+    return this.itemFrom(food, { ...req, grams: req.grams || label.serving_grams || undefined }, { type: "label" }, key);
   }
 
   private async resolveMany(reqs: ItemRequest[], ctx: Ctx, models: ResolvedModels) {

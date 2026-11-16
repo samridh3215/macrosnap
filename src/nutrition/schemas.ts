@@ -11,6 +11,13 @@ export const IdentifyOut = z.object({
     count: z.number().nullable().describe("Number of pieces for countable items, else null"),
     is_addon: z.boolean().describe("True for extras from the user's note, e.g. extra ghee"),
     confidence: z.enum(["low", "medium", "high"]),
+    label: z.object({
+      per100g: z.object({
+        kcal: z.number(), protein: z.number(), carbs: z.number().describe("available carbs, excluding fiber"),
+        fat: z.number(), fiber: z.number(),
+      }),
+      serving_grams: z.number().nullable().describe("Serving size printed on the label, in grams, else null"),
+    }).nullable().default(null).describe("Numbers read from a nutrition label visible in the photo, converted to per 100 g; null when no label"),
   })),
   notes: z.string().describe("One line on assumptions, or why nothing was found"),
 });

@@ -15,19 +15,20 @@ const CHEV = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-
 /* Where an item's numbers came from: badge class, long label, short label for the row mark, mark tone. */
 const BADGE = {
   exact: ["b-cache", "From your library", "Library", "t-lib"], alias: ["b-cache", "From your library", "Library", "t-lib"],
-  new: ["b-new", "Worked out just now", "New", "t-new"], manual: ["b-manual", "Your numbers", "Yours", "t-own"], fuzzy: ["b-fuzzy", "Close match", "Check", "t-check"],
+  new: ["b-new", "Worked out just now", "New", "t-new"], label: ["b-cache", "Read from the label", "Label", "t-lib"], manual: ["b-manual", "Your numbers", "Yours", "t-own"], fuzzy: ["b-fuzzy", "Close match", "Check", "t-check"],
 };
 const ORIGIN = {
   exact: "Found in your food library, so no new estimate was needed.",
   alias: "Found in your food library under another name you taught it.",
   new: "Not in your library yet. It was worked out once per 100 g and saved for next time.",
   manual: "You entered these numbers yourself.",
+  label: "Read from the nutrition label in your photo, so these are the printed numbers, not an estimate. Saved to your library for next time.",
 };
 
-export async function openReview({ blob = null, note = "", mode = "photo", meal = null, date, onSaved }) {
+export async function openReview({ blob = null, note = "", mode = "photo", meal = null, items = null, date, onSaved }) {
   S = {
     mode: meal ? meal.source : mode, mealId: meal?.id ?? null, ts: meal?.ts, date: meal?.date ?? date, onSaved,
-    items: meal ? structuredClone(meal.items) : mode === "manual" ? [manualItem()] : [],
+    items: meal ? structuredClone(meal.items) : items ? items : mode === "manual" ? [manualItem()] : [],
     name: meal?.name ?? "", mealType: meal?.mealType ?? guessMeal(), note: meal?.note ?? note,
     image: null, hero: meal?.thumb ?? null, thumb: meal?.thumb ?? null, busy: false, status: "", err: false, info: "",
   };
@@ -95,10 +96,12 @@ function itemHtml(it) {
       <input class="nm inline" data-act="rename" value="${esc(it.name)}" placeholder="Food name" aria-label="Food name" enterkeyhint="done" />
       <span class="kc num"><b>${n0(tot.kcal)}</b> kcal</span>
     </div>
+    <div class="it-src">
+      <button class="src ${tone}" data-act="info" aria-expanded="false" aria-label="Where this came from: ${label}"><i></i>${short}${CHEV}</button>
+    </div>
     <div class="it-sub">
       <label class="gram"><input class="g inline" data-act="grams" type="number" inputmode="decimal" min="0" value="${it.grams || ""}" placeholder="0" aria-label="Grams" /><span>g</span></label>
       <span class="meta num"><span class="m-p">${n1(tot.protein)}p</span> <span class="m-c">${n1(tot.carbs)}c</span> <span class="m-f">${n1(tot.fat)}f</span></span>
-      <button class="src ${tone}" data-act="info" aria-expanded="false" aria-label="Where this came from: ${label}"><i></i>${short}${CHEV}</button>
       <button class="x" data-act="rm" aria-label="Remove ${esc(it.name)}">${CLOSE}</button>
     </div>
     ${fuzzy && !it.match.auto ? `<div class="suggest"><span>Is this the same as <b>${esc(it.match.candidateName)}</b>?</span>
