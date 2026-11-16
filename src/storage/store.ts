@@ -1,14 +1,10 @@
 import type { Alias, Correction, Day, Food, Meal, User, Weight } from "../types.js";
 
 /**
- * Durable system of record (Couchbase Capella in prod, in-memory/JSON file in dev).
- * The food library here is global and grows over time; everything else is per user.
+ * A food library: foods, aliases and learned corrections. Self-hosted uses one shared library (lib "");
+ * hosted mode gives every user their own (lib = uid), so nothing is shared between accounts.
  */
-export interface Store {
-  readonly kind: string;
-  init(): Promise<void>;
-  close(): Promise<void>;
-
+export interface FoodStore {
   getFood(key: string): Promise<Food | null>;
   putFood(food: Food): Promise<void>;
   deleteFood(key: string): Promise<void>;
@@ -21,6 +17,21 @@ export interface Store {
 
   /** Increments and returns the new count. */
   bumpCorrection(from: string, to: string): Promise<number>;
+}
+
+/**
+ * Durable system of record (SQLite self-hosted and hosted, Couchbase optional, in-memory/JSON file in dev).
+ * The Store itself is the shared library (lib ""); `library(uid)` returns a per-user one.
+ */
+export interface Store extends FoodStore {
+  readonly kind: string;
+  init(): Promise<void>;
+  close(): Promise<void>;
+
+  /** The food library for `lib`. "" is the shared library (the Store itself). */
+  library(lib: string): FoodStore;
+  /** Deletes everything owned by a user, including their food library. */
+  purgeUser(uid: string): Promise<void>;
 
   getUser(uid: string): Promise<User | null>;
   putUser(u: User): Promise<void>;
@@ -43,9 +54,10 @@ export const ids = {
   meal: (uid: string, id: string) => `meal::${uid}::${id}`,
   weight: (uid: string, date: string) => `weight::${uid}::${date}`,
   day: (uid: string, date: string) => `day::${uid}::${date}`,
-  food: (key: string) => `food::${key.replace(/ /g, "_")}`,
-  alias: (key: string) => `alias::${key.replace(/ /g, "_")}`,
-  correction: (from: string, to: string) => `corr::${from.replace(/ /g, "_")}::${to.replace(/ /g, "_")}`,
+  // lib "" keeps the original ids so existing self-hosted data still resolves.
+  food: (key: string, lib = "") => `food::${lib ? `${lib}::` : ""}${key.replace(/ /g, "_")}`,
+  alias: (key: string, lib = "") => `alias::${lib ? `${lib}::` : ""}${key.replace(/ /g, "_")}`,
+  correction: (from: string, to: string, lib = "") => `corr::${lib ? `${lib}::` : ""}${from.replace(/ /g, "_")}::${to.replace(/ /g, "_")}`,
   user: (uid: string) => `user::${uid}`,
 };
 

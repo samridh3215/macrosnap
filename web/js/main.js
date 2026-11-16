@@ -1,5 +1,6 @@
 import { renderFoods } from "./foods.js";
 import { openCamera } from "./camera.js";
+import { ensureSignedIn } from "./login.js";
 import { ensureProfile } from "./onboarding.js";
 import { openReview } from "./review.js";
 import { renderSettings } from "./settings.js";
@@ -50,7 +51,10 @@ function route() {
   document.querySelectorAll("#tabs a").forEach((a) => a.classList.toggle("on", a.dataset.tab === name));
   const params = new URLSearchParams(qs || "");
   routes[name](view, params);
-  if (name === "today" && params.get("add") === "photo") { history.replaceState(null, "", "#/today"); startPhoto(); }
+  const add = name === "today" && params.get("add");
+  if (add) history.replaceState(null, "", "#/today");
+  if (add === "photo") startPhoto();
+  else if (add === "manual") openReview({ mode: "manual", date: dayState.date, onSaved: refreshToday });
 }
 window.addEventListener("hashchange", route);
 
@@ -92,5 +96,5 @@ if ("serviceWorker" in navigator) {
   navigator.serviceWorker.addEventListener("controllerchange", () => { if (hadController && !reloaded) { reloaded = true; location.reload(); } });
   navigator.serviceWorker.register("/sw.js").catch(() => {});
 }
-// Nothing renders until the body profile is complete; shared photos wait behind it too.
-ensureProfile().catch(() => {}).then(() => { route(); handleShared().catch(() => {}); });
+// Nothing renders until you're signed in (hosted) and the body profile is complete; shared photos wait behind both.
+ensureSignedIn().catch(() => {}).then(() => ensureProfile()).catch(() => {}).then(() => { route(); handleShared().catch(() => {}); });

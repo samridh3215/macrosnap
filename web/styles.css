@@ -410,3 +410,6 @@ body.gated .tabs, body.gated #view { display: none; }
 .gate .btn:disabled { opacity: .6; cursor: default; }
 .gate-err { min-height: 1.4em; margin: 0 0 8px; color: var(--kokum); }
 .gate-fine { text-align: center; margin: 14px 0 0; }
+.gate .google-btn { width: 100%; min-height: 50px; font-size: 16px; display: flex; align-items: center; justify-content: center; gap: 10px; text-decoration: none; }
+.gate .or { display: flex; align-items: center; gap: 12px; margin: 18px 0; color: var(--ink-soft); font-size: 13px; }
+.gate .or::before, .gate .or::after { content: ""; flex: 1; height: 1px; background: var(--rim-soft); }

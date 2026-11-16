@@ -78,6 +78,13 @@ export class CouchbaseStore implements Store {
     return res.rows as T[];
   }
 
+  /** Couchbase keeps the single shared library; per-user libraries (hosted mode) need SQLite. */
+  library(lib: string) {
+    if (lib) throw new Error("Per-user food libraries need SQLite; hosted mode doesn't support Couchbase.");
+    return this;
+  }
+  async purgeUser(): Promise<void> { throw new Error("Account deletion needs SQLite (hosted mode)."); }
+
   getFood(key: string) { return this.get<Food>("foods", ids.food(key)); }
   async putFood(f: Food) { await this.cols.foods.upsert(ids.food(f.key), f); }
   deleteFood(key: string) { return this.del("foods", ids.food(key)); }

@@ -13,7 +13,8 @@ export class JevJudge implements Judge {
   constructor(private cache: Cache, private fallback: Judge, private f: typeof fetch = fetch) {}
 
   private async ask(state: unknown, questions: Record<string, unknown>, apiKey?: string): Promise<Answers> {
-    const key = apiKey || config.openrouterKey;
+    // Hosted mode never falls back to the platform key: the API passes it explicitly when a user may use it.
+    const key = apiKey || (config.hosted ? "" : config.openrouterKey);
     if (!key) throw new Error("no OpenRouter key");
     const r = await this.f(URL_, {
       method: "POST",

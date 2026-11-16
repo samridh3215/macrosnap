@@ -1,4 +1,4 @@
-import { del, get, local, put, saveLocal } from "./api.js";
+import { del, get, local, post, put, saveLocal } from "./api.js";
 import { profileProblem } from "./onboarding.js";
 import { $, enter, esc, n0, toast } from "./util.js";
 
@@ -18,7 +18,47 @@ export async function renderSettings(root, params) {
     return;
   }
   drawRest(root);
+  if (me.hosted) await drawAccount(root);
   enter($("#rest", root));
+}
+
+/** Hosted servers: who you're signed in as, your plan and allowance, billing and sign-out. */
+async function drawAccount(root) {
+  // Sessions replace the app token here; the OpenRouter key stays (bring your own = free).
+  $("#sToken", root)?.closest("label")?.remove();
+  const sum = $("#conn .acc-s", root);
+  if (sum) sum.textContent = local.orKey ? "Your own key" : "Using Macro Snap's AI";
+  let a;
+  try { a = await get("/api/account"); } catch (e) { toast(e.message); return; }
+  const ac = a.access;
+  const fmtDate = (d) => (d ? new Date(d).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" }) : "");
+  const usage = local.orKey
+    ? "Your own OpenRouter key is used, so AI is free here and nothing is counted."
+    : ac.paid
+      ? `AI this year: $${ac.spentUsd.toFixed(2)} of $${ac.capUsd.toFixed(2)} included.`
+      : `${Math.min(ac.photos, ac.freePhotos)} of ${ac.freePhotos} free photos used.`;
+  const until = a.plan?.status === "cancelled" ? `· ends ${fmtDate(a.plan.endsAt)}` : a.plan?.renewsAt ? `· renews ${fmtDate(a.plan.renewsAt)}` : "";
+  const plan = ac.paid ? `<b>Subscribed</b> <span class="muted">${esc(until)}</span>` : "<b>Free</b>";
+  const html = `<h2>Account</h2><div class="card acct">
+    <div class="row"><span>${esc(a.email)}</span></div>
+    <div class="row small">${plan}</div>
+    <p class="small muted" style="margin:6px 0 12px">${usage}</p>
+    <div class="row">
+      ${!ac.paid && a.billing ? `<a class="btn sm primary" href="/api/billing/checkout">Subscribe · ${esc(a.priceLabel)}</a>` : ""}
+      ${a.plan?.portalUrl ? `<a class="btn sm" href="${esc(a.plan.portalUrl)}" target="_blank" rel="noopener">Manage billing</a>` : ""}
+      <button class="btn sm" id="sOut">Sign out</button>
+    </div>
+    <details style="margin-top:14px"><summary class="small muted">Delete account</summary>
+      <p class="small muted">Deletes your meals, weights, food library and account. This can't be undone. Export your data first.</p>
+      <button class="btn sm" id="sDelAcct">Delete my account</button>
+    </details>
+  </div>`;
+  $("#rest", root).insertAdjacentHTML("afterbegin", html);
+  $("#sOut", root).onclick = async () => { await post("/api/auth/logout").catch(() => {}); location.replace("/"); };
+  $("#sDelAcct", root).onclick = async () => {
+    if (!confirm("Delete your account and all your data? This can't be undone.")) return;
+    try { await del("/api/account"); location.replace("/"); } catch (e) { toast(e.message, 4000); }
+  };
 }
 
 const CHEV = `<svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9.5l6 6 6-6"/></svg>`;

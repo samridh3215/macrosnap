@@ -22,6 +22,8 @@ export interface JsonRequest<T> {
   schemaName: string;
   reasoning?: boolean;
   maxTokens?: number;
+  /** Stable, anonymous end-user id for OpenRouter's per-user attribution (hosted mode). */
+  endUser?: string;
 }
 
 export interface Usage { promptTokens: number; completionTokens: number; costUsd: number | null }

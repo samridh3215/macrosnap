@@ -58,7 +58,7 @@ function hero(d, z) {
   const left = Math.round(tg.target - eaten);
   const big = left >= 0 ? n0(left) : `+${n0(-left)}`;
   return `<section class="hero">
-    <div class="hero-top"><span class="eyebrow">${left >= 0 ? "Calories left" : "Calories over"}</span><span class="pill ${z.cls}">${PILL[z.cls] || ""}</span></div>
+    <div class="hero-top"><span class="eyebrow">${left >= 0 ? "Calories left" : "Calories over"}</span><span class="pill ${z.cls}">${z.pill || PILL[z.cls] || ""}</span></div>
     <div class="hero-num num">${big}<small>kcal</small></div>
     <div class="hero-sub"><b class="num">${n0(eaten)}</b> eaten of ${n0(tg.target)} target</div>
     ${rangeLine(d)}
@@ -77,7 +77,15 @@ function macros(d) {
 
 function presetSourceLabel(d) { return d.presetSource === "manual" ? "set by you" : d.presetSource === "activities" ? "from activities" : "suggested"; }
 
-function zone(eaten, r, inProgress) {
+/**
+ * On a cut, the top of the range is maintenance. Going over target but staying under it is still a deficit,
+ * so say that plainly instead of letting it read as a failed day.
+ */
+function zone(eaten, r, inProgress, cut, maintenance) {
+  if (cut && maintenance && eaten > r.bandHigh) {
+    if (eaten < maintenance) return { cls: "high", pill: "Still in deficit", text: `Over target, but still in a deficit, just a smaller one: ${n0(maintenance - eaten)} kcal under maintenance${inProgress ? " so far" : ""}.` };
+    return { cls: "over", pill: "Over maintenance", text: `${n0(eaten - maintenance)} kcal over maintenance${inProgress ? " so far" : ""}, so no deficit today. One day doesn't undo a week; the weekly average is what counts.` };
+  }
   if (eaten < r.floor && inProgress) return { cls: "low", text: `Eat ${n0(r.bandLow - eaten)}–${n0(r.bandHigh - eaten)} more today.` };
   if (eaten < r.floor) return { cls: "under", text: `This day ended ${n0(r.floor - eaten)} kcal under your safe minimum.` };
   if (eaten < r.bandLow) return { cls: "low", text: `Eat ${n0(r.bandLow - eaten)}–${n0(r.bandHigh - eaten)} more ${inProgress ? "today" : "to have hit your range"}.` };
@@ -96,13 +104,13 @@ function rangeLine(d) {
     <div class="band" style="left:${p(r.bandLow)};width:calc(${p(r.bandHigh)} - ${p(r.bandLow)})"></div>
     <div class="you" style="left:${p(eaten)}"></div>
     <span class="tick" style="left:${p(r.floor)}">min ${n0(r.floor)}</span>
-    <span class="tick" style="left:${p(r.ceiling)}">limit ${n0(r.ceiling)}</span>
+    <span class="tick" style="left:${p(r.ceiling)}">${d.goal?.type === "cut" && r.ceiling === d.targets.tdee ? "maintenance" : "limit"} ${n0(r.ceiling)}</span>
   </div>`;
 }
 
 function draw() {
   const d = dayState.data, t = d.targets, r = t.range, eaten = d.totals.kcal;
-  const z = zone(eaten, r, dayState.date >= today());
+  const z = zone(eaten, r, dayState.date >= today(), d.goal?.type === "cut", t.tdee);
 
   const presetChips = d.presets.map((p) => `<button class="chip ${p.id === d.presetId ? "on" : ""} ${p.id === d.suggested ? "sugg" : ""}" data-preset="${p.id}" title="${esc(p.blurb)}" aria-label="Level ${esc(p.label)}: ${esc(p.blurb)}">${esc(CHIP[p.id] || p.label)}</button>`).join("");
   const presetNote = d.presetSource === "manual" ? `Your pick. Tap it again to go automatic.`

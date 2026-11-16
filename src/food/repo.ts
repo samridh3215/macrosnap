@@ -1,15 +1,19 @@
 import { config } from "../config.js";
 import { getJSON, setJSON, type Cache } from "../storage/cache.js";
-import { now, type Store } from "../storage/store.js";
+import { now, type FoodStore, type Store } from "../storage/store.js";
 import type { Alias, Food, MatchInfo } from "../types.js";
 import type { Judge } from "../judge/judge.js";
 import { bestMatch, foodKey, similarity } from "./key.js";
 
-const CK = {
-  food: (k: string) => `food:${k}`,
-  alias: (k: string) => `alias:${k}`,
-  index: "foods:index", // hash key -> display name, for fuzzy matching
-  indexReady: "foods:index:ready",
+// Cache keys. The shared library keeps its original keys; a per-user library is prefixed with "lib:<uid>:".
+const cacheKeys = (lib: string) => {
+  const p = lib ? `lib:${lib}:` : "";
+  return {
+    food: (k: string) => `${p}food:${k}`,
+    alias: (k: string) => `${p}alias:${k}`,
+    index: `${p}foods:index`, // hash key -> display name, for fuzzy matching
+    indexReady: `${p}foods:index:ready`,
+  };
 };
 const NO_ALIAS = "__none__";
 
@@ -23,51 +27,62 @@ export type Resolution =
  * Also owns aliases (fuzzy/correction/rename links), the correction-learning loop and re-keying.
  */
 export class FoodRepo {
-  constructor(private store: Store, private cache: Cache, readonly judge: Judge | null = null) {}
+  private store: FoodStore;
+  private CK: ReturnType<typeof cacheKeys>;
+  constructor(private root: Store, private cache: Cache, readonly judge: Judge | null = null, readonly lib = "") {
+    this.store = root.library(lib);
+    this.CK = cacheKeys(lib);
+  }
+
+  /** The same repo over another library ("" = shared, uid = that user's own). */
+  for(lib: string): FoodRepo { return lib === this.lib ? this : new FoodRepo(this.root, this.cache, this.judge, lib); }
+
+  /** Read-only view of this library, for listing. */
+  get library(): FoodStore { return this.store; }
 
   async get(key: string): Promise<Food | null> {
     if (!key) return null;
-    const hot = await getJSON<Food>(this.cache, CK.food(key));
+    const hot = await getJSON<Food>(this.cache, this.CK.food(key));
     if (hot) return hot;
     const f = await this.store.getFood(key);
-    if (f) await setJSON(this.cache, CK.food(key), f, config.food.cacheTtlSec);
+    if (f) await setJSON(this.cache, this.CK.food(key), f, config.food.cacheTtlSec);
     return f;
   }
 
   async put(f: Food) {
     await this.store.putFood(f); // durable first
-    await setJSON(this.cache, CK.food(f.key), f, config.food.cacheTtlSec);
-    await this.cache.hset(CK.index, f.key, f.name);
+    await setJSON(this.cache, this.CK.food(f.key), f, config.food.cacheTtlSec);
+    await this.cache.hset(this.CK.index, f.key, f.name);
   }
 
   async remove(key: string) {
     await this.store.deleteFood(key);
-    await this.cache.del(CK.food(key));
-    await this.cache.hdel(CK.index, key);
+    await this.cache.del(this.CK.food(key));
+    await this.cache.hdel(this.CK.index, key);
   }
 
   async index(): Promise<Array<{ key: string; name: string }>> {
-    if (!(await this.cache.exists(CK.indexReady))) {
+    if (!(await this.cache.exists(this.CK.indexReady))) {
       const all = await this.store.listFoodIndex();
-      for (const e of all) await this.cache.hset(CK.index, e.key, e.name);
-      await this.cache.set(CK.indexReady, "1", 3600); // rebuild hourly as a safety net
+      for (const e of all) await this.cache.hset(this.CK.index, e.key, e.name);
+      await this.cache.set(this.CK.indexReady, "1", 3600); // rebuild hourly as a safety net
       return all;
     }
-    return Object.entries(await this.cache.hgetall(CK.index)).map(([key, name]) => ({ key, name }));
+    return Object.entries(await this.cache.hgetall(this.CK.index)).map(([key, name]) => ({ key, name }));
   }
 
   async getAlias(key: string): Promise<Alias | null> {
-    const hot = await this.cache.get(CK.alias(key));
+    const hot = await this.cache.get(this.CK.alias(key));
     if (hot === NO_ALIAS) return null;
     if (hot) return JSON.parse(hot) as Alias;
     const a = await this.store.getAlias(key);
-    await this.cache.set(CK.alias(key), a ? JSON.stringify(a) : NO_ALIAS, 3600);
+    await this.cache.set(this.CK.alias(key), a ? JSON.stringify(a) : NO_ALIAS, 3600);
     return a;
   }
 
   async putAlias(a: Alias) {
     await this.store.putAlias(a);
-    await this.cache.set(CK.alias(a.alias), JSON.stringify(a), 3600);
+    await this.cache.set(this.CK.alias(a.alias), JSON.stringify(a), 3600);
   }
 
   async recordHit(f: Food) {
