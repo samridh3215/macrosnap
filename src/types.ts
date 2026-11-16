@@ -28,7 +28,7 @@ export interface Food {
   references: string[];
   confidence: Confidence;
   validation: { ok: boolean; issues: string[] };
-  source: { kind: "llm" | "user"; model?: string };
+  source: { kind: "llm" | "user" | "label"; model?: string };
   verified: boolean; // user-locked: never recomputed automatically
   hits: number;
   createdAt: string;
@@ -48,7 +48,7 @@ export interface Correction { from: string; to: string; count: number; updatedAt
 
 /* ---------------- Meals ---------------- */
 export const MatchInfo = z.object({
-  type: z.enum(["exact", "alias", "fuzzy", "new", "manual"]),
+  type: z.enum(["exact", "alias", "fuzzy", "new", "manual", "label"]),
   score: z.number().optional(),
   auto: z.boolean().optional(),
   candidateName: z.string().optional(),

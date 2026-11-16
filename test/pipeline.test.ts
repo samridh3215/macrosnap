@@ -114,4 +114,46 @@ describe("validation + self-repair", () => {
     expect(r.items[0].per100g).toEqual(good);
     expect(r.warnings).toEqual([]);
   });
+
+  describe("nutrition labels", () => {
+    let repo: FoodRepo;
+    beforeEach(() => { repo = new FoodRepo(new MemoryStore(), new MemoryCache()); });
+    /** Vision model that "reads" a whey label plus a plain roti on the same plate. */
+    class LabelLLM extends FakeLLM {
+      async json<T>(req: JsonRequest<T>): Promise<JsonResult<T>> {
+        if (req.schemaName !== "identify") return super.json(req);
+        this.calls.push({ schemaName: req.schemaName, model: req.model });
+        const data = { meal_name: "Whey and roti", notes: "label read", items: [
+          { seen_name: "protein tub", canonical_name: "Acme Whey Chocolate", portion: "1 scoop", grams: 30, count: null, is_addon: false, confidence: "high",
+            label: { per100g: { kcal: 380, protein: 75, carbs: 8, fat: 5, fiber: 1 }, serving_grams: 30 } },
+          { seen_name: "roti", canonical_name: "roti", portion: "1 piece", grams: 40, count: 1, is_addon: false, confidence: "medium", label: null },
+        ] };
+        return { data: req.schema.parse(data), model: req.model, usage: null, attempts: 1 };
+      }
+    }
+
+    it("uses the printed numbers, saves them verified, and still estimates the rest", async () => {
+      const l = new LabelLLM(); const s = new NutritionService(repo, l);
+      const r = await s.analyze({ image: "x" }, ctx);
+      expect(r.items.map((i) => i.match.type)).toEqual(["label", "new"]);
+      expect(r.items[0].totals.kcal).toBe(114); // 30 g of 380 kcal/100 g
+      expect(r.items[0].totals.protein).toBe(22.5);
+      const nutritionCalls = l.calls.filter((c) => c.schemaName === "nutrition");
+      expect(nutritionCalls).toHaveLength(1); // only the roti was estimated
+      const f = await repo.get(r.items[0].key);
+      expect(f?.verified).toBe(true);
+      expect(f?.source.kind).toBe("label");
+      expect(f?.unit).toEqual({ name: "serving", grams: 30 });
+    });
+
+    it("keeps numbers you saved yourself over a label", async () => {
+      const l = new LabelLLM(); const s = new NutritionService(repo, l);
+      await s.analyze({ image: "x" }, ctx);
+      const f = (await repo.get("acme chocolate whey"))!;
+      await repo.put({ ...f, per100g: { kcal: 400, protein: 80, carbs: 6, fat: 6, fiber: 0 }, source: { kind: "user" } });
+      const r = await s.analyze({ image: "x" }, ctx);
+      expect(r.items[0].match.type).toBe("exact");
+      expect(r.items[0].totals.kcal).toBe(120);
+    });
+  });
 });

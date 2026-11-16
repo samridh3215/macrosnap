@@ -90,19 +90,19 @@ function drawRest(root) {
       <label class="f" style="margin-top:14px">Rate (% body weight per week) <input id="gRate" type="number" inputmode="decimal" step="0.05" min="0" max="1.5" value="${s.goal.ratePctPerWeek}"></label>
       <div class="tiny muted" id="gPreview" style="margin:-6px 0 14px"></div>
       <div class="grid2">
-        <label class="f">Default day type<select id="sDef">${me.presetOrder.map((id) => `<option value="${id}" ${s.defaultPreset === id ? "selected" : ""}>${esc(me.presets[id].label)}</option>`).join("")}</select></label>
+        <label class="f">Default activity level<select id="sDef">${me.presetOrder.map((id) => `<option value="${id}" ${s.defaultPreset === id ? "selected" : ""}>${esc(me.presets[id].label)}</option>`).join("")}</select></label>
         <label class="f">Eat back exercise (%)<input id="sEat" type="number" inputmode="numeric" min="0" max="100" step="5" value="${Math.round(s.eatBack * 100)}"></label>
       </div>
       <label class="f" style="margin-bottom:0">Time zone<input id="sTz" value="${esc(s.tz)}"></label>
     </div>
 
-    <details class="acc" style="margin-top:12px"><summary>Day types<span class="acc-s">Fine-tune</span>${CHEV}</summary><div class="acc-b">
-      <p class="tiny muted" style="margin:0">Each day type sets how active you are and how macros are split. The defaults are a good start.</p>
+    <details class="acc" style="margin-top:12px"><summary>Activity levels<span class="acc-s">Fine-tune</span>${CHEV}</summary><div class="acc-b">
+      <p class="tiny muted" style="margin:0">Each level (1 least active to 5 super active) sets how active you are and how macros are split. The defaults are a good start.</p>
       ${presetRows}
       <p class="tiny muted">Movement is the non-exercise activity multiplier. Default exercise is used only when no activity is logged or synced. Carbs fill what's left after protein and fat, so harder days get more carbs.</p>
       <button class="btn xs ghost" id="pReset">Reset to defaults</button>
     </div></details>
-    <div class="save-row"><button class="btn primary" id="saveAll">Save body, goal and day types</button></div>
+    <div class="save-row"><button class="btn primary" id="saveAll">Save body, goal and activity levels</button></div>
 
     <h2>Integrations</h2>
     <details class="acc"><summary>AI models<span class="acc-s">${s.models.mode === "auto" ? "Auto" : "Manual"}</span>${CHEV}</summary><div class="acc-b">
@@ -168,7 +168,7 @@ function bindRest(root) {
   $("#gType", root).onclick = (e) => { const g = e.target.dataset.g; if (!g) return; goalType = g; root.querySelectorAll("#gType button").forEach((b) => b.classList.toggle("on", b.dataset.g === g)); preview(); };
   $("#gRate", root).oninput = preview; $("#pW", root).oninput = preview; preview();
 
-  $("#pReset", root).onclick = async () => { me = { ...me, ...(await put("/api/me", { settings: { presets: {} } })) }; toast("Day types reset"); drawRest(root); };
+  $("#pReset", root).onclick = async () => { me = { ...me, ...(await put("/api/me", { settings: { presets: {} } })) }; toast("Activity levels reset"); drawRest(root); };
 
   $("#saveAll", root).onclick = async () => {
     const num = (id) => { const v = $(id, root).value; return v === "" ? undefined : Number(v); };

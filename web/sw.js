@@ -1,9 +1,9 @@
-const VERSION = "macrosnap-v18";
+const VERSION = "macrosnap-v25";
 const SHELL = ["/", "/index.html", "/styles.css", "/manifest.webmanifest", "/icons/icon-192.png",
   "/js/main.js", "/js/api.js", "/js/util.js", "/js/today.js", "/js/review.js", "/js/foods.js", "/js/trends.js", "/js/settings.js", "/js/charts.js", "/js/camera.js", "/js/onboarding.js"];
 
 self.addEventListener("install", (e) => {
-  e.waitUntil(caches.open(VERSION).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));
+  e.waitUntil(caches.open(VERSION).then((c) => c.addAll(SHELL.map((u) => new Request(u, { cache: "reload" })))).then(() => self.skipWaiting()));
 });
 self.addEventListener("activate", (e) => {
   e.waitUntil(caches.keys()
@@ -30,7 +30,8 @@ self.addEventListener("fetch", (e) => {
   if (e.request.method !== "GET" || url.origin !== location.origin || url.pathname.startsWith("/api/")) return;
 
   // App shell: network-first so updates land immediately; cache fallback offline.
-  e.respondWith(fetch(e.request)
+  // cache: "no-cache" revalidates with the server, so an old copy in the browser cache never mixes with new files.
+  e.respondWith(fetch(e.request, { cache: "no-cache" })
     .then((r) => { const copy = r.clone(); caches.open(VERSION).then((c) => c.put(e.request, copy)); return r; })
     .catch(() => caches.match(e.request, { ignoreSearch: true }).then((r) => r || caches.match("/index.html"))));
 });

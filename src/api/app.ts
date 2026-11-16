@@ -381,7 +381,8 @@ export function buildApp(d: Deps) {
   /* ---------------- PWA ---------------- */
   // Share-target fallback if the service worker isn't active yet.
   app.post("/share", (c) => c.redirect("/?share_failed=1", 303));
-  app.use("/sw.js", async (c, next) => { await next(); c.header("Cache-Control", "no-cache"); });
+  // Revalidate every static file: without this browsers heuristically cache old JS and skip new modules (e.g. the profile gate).
+  app.use("/*", async (c, next) => { await next(); if (!c.req.path.startsWith("/api/")) c.header("Cache-Control", "no-cache"); });
   app.use("/*", serveStatic({ root: d.webRoot }));
   app.get("*", serveStatic({ root: d.webRoot, path: "index.html" }));
 

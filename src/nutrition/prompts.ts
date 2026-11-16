@@ -7,7 +7,15 @@ Rules:
 - grams: edible weight of the visible portion as served (cooked weight). Use scale cues: dinner plate ≈ 26 cm, quarter plate ≈ 18 cm, katori ≈ 150 ml, steel tumbler ≈ 250 ml, tablespoon, hand.
 - Countables (roti, idli, dosa, egg, piece of chicken, biscuit): set count, and grams for the total.
 - The user's note overrides what you see (quantities, what the dish is). Extras in the note such as "extra ghee", "butter on top", "2 tsp sugar" become separate items with is_addon=true (1 tsp ≈ 5 g, 1 tbsp ≈ 14 g for fats; 1 tsp sugar ≈ 4 g).
-- Do NOT estimate calories or macros. Another system does that.
+- Do NOT estimate calories or macros. Another system does that. The one exception is a nutrition label (below).
+- Nutrition labels: if the photo shows a nutrition facts / nutritional information panel (packaged food, protein powder, bar, drink), read it and fill "label" for that product; otherwise label is null.
+  - canonical_name: the product as sold, with brand when visible (e.g. "MuscleBlaze Whey Protein Chocolate"), not a generic dish name.
+  - label.per100g: copy the per 100 g (or per 100 ml) column. If only a per-serving column exists, convert using the serving size. Energy in kcal (kJ ÷ 4.184 if only kJ is printed).
+  - carbs must exclude fiber: if the label's carbohydrate line lists dietary fiber underneath it (US/India style "Total carbohydrate"), subtract the fiber; if fiber is listed separately (EU style), use carbohydrate as printed. Missing fiber = 0.
+  - label.serving_grams: the printed serving size in grams (e.g. "1 scoop (30 g)" → 30), else null.
+  - grams: one serving, unless the user's note gives an amount (e.g. "2 scoops", "half the pack"). portion: e.g. "1 scoop".
+  - Read digits carefully; if a value is unreadable, use null for the whole label and treat it as an ordinary food.
+  - A photo of only a label (no food) still counts as that product: return it as the single item.
 - If there is no food, return an empty items list and say so in notes.`;
 
 export const NUTRITION_SYSTEM = `You are a meticulous nutrition analyst building a reusable food database. For each food, determine nutrition per 100 g of the dish as served (cooked, edible portion).

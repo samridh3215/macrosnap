@@ -6,6 +6,8 @@ export const dayState = { date: today(), data: null };
 let rootEl = null;
 let fresh = true;        // true until the first paint of a day, so only arrivals animate
 let planOpen = false;    // the day-type panel stays open across redraws
+let calcOpen = false;    // so does the working-out fold inside it
+const CHIP = {}; // activity levels are just 1 to 5
 
 const METHOD = { device: "watch calories", power: "power meter", acsm: "pace model", hr: "heart rate", met: "activity estimate", manual: "entered" };
 const CHEV_L = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 6l-6 6 6 6"/></svg>`;
@@ -102,13 +104,13 @@ function draw() {
   const d = dayState.data, t = d.targets, r = t.range, eaten = d.totals.kcal;
   const z = zone(eaten, r, dayState.date >= today());
 
-  const presetChips = d.presets.map((p) => `<button class="chip ${p.id === d.presetId ? "on" : ""} ${p.id === d.suggested ? "sugg" : ""}" data-preset="${p.id}" title="${esc(p.blurb)}">${esc(p.label)}</button>`).join("");
-  const presetNote = d.presetSource === "manual" ? `You picked ${esc(t.preset.label.toLowerCase())}. Tap it again to let your activities decide.`
-    : d.presetSource === "activities" ? `Picked from today's activities.` : `${esc(t.preset.blurb)}. Tap a day type if today is different.`;
+  const presetChips = d.presets.map((p) => `<button class="chip ${p.id === d.presetId ? "on" : ""} ${p.id === d.suggested ? "sugg" : ""}" data-preset="${p.id}" title="${esc(p.blurb)}" aria-label="Level ${esc(p.label)}: ${esc(p.blurb)}">${esc(CHIP[p.id] || p.label)}</button>`).join("");
+  const presetNote = d.presetSource === "manual" ? `Your pick. Tap it again to go automatic.`
+    : d.presetSource === "activities" ? `Picked from today's activities.` : `${esc(t.preset.blurb)}.`;
 
   const calc = [
     [`Resting burn (${esc(t.bmr.formula)})`, n0(t.bmr.kcal)],
-    [`With daily movement, ${esc(t.preset.label.toLowerCase())} day ×${t.preset.neat}`, n0(t.neatKcal)],
+    [`With daily movement, level ${esc(t.preset.label)} ×${t.preset.neat}`, n0(t.neatKcal)],
     [t.exercise.source === "activities" ? `Exercise, ${Math.round(t.exercise.eatBack * 100)}% of logged` : "Exercise, day-type default", `+${n0(t.exercise.kcal)}`],
     ...(t.adaptive.applied ? [[`Calibrated to your weight trend ×${t.adaptive.k}`, n0(t.tdee)]] : [["Total burn", n0(t.tdee)]]),
     ...(t.goalDelta ? [[d.goal.type === "cut" ? `Fat-loss deficit (${d.goal.ratePctPerWeek}% a week)` : `Muscle-gain surplus (${d.goal.ratePctPerWeek}% a week)`, `${t.goalDelta > 0 ? "+" : "−"}${n0(Math.abs(t.goalDelta))}`]] : []),
@@ -132,13 +134,16 @@ function draw() {
     ${macros(d)}
 
     <details class="plan" id="plan" ${planOpen ? "open" : ""}>
-      <summary><span class="ps-l">Day type</span><span class="ps-v">${esc(t.preset.label)}</span><span class="ps-s">${presetSourceLabel(d)}</span>${CHEV_D}</summary>
+      <summary><span class="ps-l">Activity level</span><span class="ps-v">${esc(t.preset.label)}</span><span class="ps-s">${presetSourceLabel(d)}</span>${CHEV_D}</summary>
       <div class="plan-body">
-        <div class="chips" id="presets" role="radiogroup" aria-label="Day type">${presetChips}</div>
+        <div class="chips" id="presets" role="radiogroup" aria-label="Activity level, 1 least active to 5 super active">${presetChips}</div>
         <p class="preset-note">${presetNote}</p>
-        <div class="calc-h">How today's target is worked out</div>
-        <table class="calc">${calc}</table>
-        <p class="tiny muted">Protein is set at ${esc(t.macros.basis)}. Fat follows the day type and carbs fill the rest, so hard days get more carbs.${t.warnings.length ? ` ${t.warnings.map(esc).join(". ")}.` : ""}</p>
+        ${t.warnings.length ? `<p class="small plan-warn">${t.warnings.map(esc).join(". ")}.</p>` : ""}
+        <details class="calc-fold" id="calcFold" ${calcOpen ? "open" : ""}>
+          <summary>How the target is worked out${CHEV_D}</summary>
+          <table class="calc">${calc}</table>
+          <p class="tiny muted">Protein is set at ${esc(t.macros.basis)}. Fat follows the activity level and carbs fill the rest, so hard days get more carbs.</p>
+        </details>
       </div>
     </details>
 
@@ -147,7 +152,7 @@ function draw() {
     ${meals ? `<ul class="list">${meals}</ul>` : `<div class="empty-card">${ICON.camera}<b>Nothing logged yet</b><p>Tap the camera to snap your plate, or share a photo from your gallery.</p></div>`}
 
     <h2>Training <span class="h2-act"><button class="btn xs ghost" id="addAct">+ Add</button></span></h2>
-    ${acts ? `<ul class="list">${acts}</ul>` : `<p class="empty">No training logged. Until you add some, a ${esc(t.preset.label.toLowerCase())} day counts as +${n0(t.preset.defaultExerciseKcal)} kcal.</p>`}
+    ${acts ? `<ul class="list">${acts}</ul>` : `<p class="empty">No training logged. Until you add some, level ${esc(t.preset.label)} counts as +${n0(t.preset.defaultExerciseKcal)} kcal.</p>`}
     ${d.strava.enabled ? `<div class="row wrap tiny muted" style="margin-top:6px">${d.strava.connected ? `<button class="btn xs link" id="syncStrava">Sync Strava</button>` : `<a class="btn xs link" href="#/settings">Connect Strava</a>`}${d.strava.syncedAt ? `<span>Synced at ${new Date(d.strava.syncedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>` : ""}</div>` : ""}
 
     <h2>Weight</h2>
@@ -163,7 +168,8 @@ function draw() {
   if (fresh) { fresh = false; enter(rootEl); }
   const reload = () => renderToday(rootEl, undefined, true);
 
-  $("#plan", rootEl).addEventListener("toggle", (e) => { planOpen = e.target.open; });
+  $("#plan", rootEl).addEventListener("toggle", (e) => { if (e.target.id === "plan") planOpen = e.target.open; });
+  $("#calcFold", rootEl).addEventListener("toggle", (e) => { calcOpen = e.target.open; });
   $("#presets", rootEl).onclick = async (e) => {
     const id = e.target.dataset?.preset; if (!id) return;
     const next = id === d.presetId && d.presetSource === "manual" ? null : id;

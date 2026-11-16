@@ -66,6 +66,8 @@ p { text-wrap: pretty; }
 .h2-act .btn { text-transform: none; letter-spacing: 0; font-size: 14px; }
 .h2-n { font: 500 13px var(--body); letter-spacing: 0; text-transform: none; color: var(--ink-faint); }
 h2 .h2-act { margin-left: auto; display: flex; gap: 2px; }
+.page-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 6px 0 18px; }
+.page-head h1 { margin: 0; }
 
 .card { background: var(--plate); border-radius: var(--r); padding: 16px 18px; margin-bottom: 12px; box-shadow: var(--shadow); }
 .card > :last-child { margin-bottom: 0; }
@@ -120,18 +122,24 @@ h2 .h2-act { margin-left: auto; display: flex; gap: 2px; }
 .plan .ps-l { color: var(--ink-soft); }
 .plan .ps-v { margin-left: auto; font-weight: 600; }
 .plan .ps-s { font-size: 12px; font-weight: 600; padding: 3px 8px; border-radius: 999px; background: var(--raise); color: var(--ink-soft); }
-.plan .chev { width: 16px; height: 16px; color: var(--ink-faint); transition: transform .2s var(--ease); flex: none; }
-.plan[open] .chev { transform: rotate(180deg); }
+.plan > summary .chev { width: 16px; height: 16px; color: var(--ink-faint); transition: transform .2s var(--ease); flex: none; }
+.plan[open] > summary .chev { transform: rotate(180deg); }
 .plan-body { padding: 0 18px 18px; animation: fade .24s var(--ease); }
-.chips { display: flex; gap: 2px; padding: 4px; background: var(--well); border-radius: 999px; overflow-x: auto; scrollbar-width: none; }
-.chip { flex: 1 0 auto; min-height: 40px; padding: 8px 14px; border: 0; border-radius: 999px; background: transparent; font: 600 14px var(--body); color: var(--ink-soft); cursor: pointer; white-space: nowrap; position: relative; }
+.chips { display: flex; gap: 2px; padding: 4px; background: var(--well); border-radius: 999px; }
+.chip { flex: 1 1 0; min-width: 0; min-height: 40px; padding: 8px 4px; border: 0; border-radius: 999px; background: transparent; font: 600 14px var(--body); color: var(--ink-soft); cursor: pointer; white-space: nowrap; position: relative; }
 .chip.on { background: var(--raise); color: var(--ink); box-shadow: 0 0 0 1px var(--rim-soft); }
 .chip.sugg:not(.on)::after { content: ""; position: absolute; top: 8px; right: 8px; width: 6px; height: 6px; border-radius: 50%; background: var(--leaf); }
 .preset-note { font-size: 13px; color: var(--ink-soft); margin: 10px 2px 0; }
 .calc { width: 100%; border-collapse: collapse; font-size: 14px; margin-top: 8px; }
 .calc td { padding: 8px 0; border-bottom: 1px solid var(--rim-soft); } .calc td:last-child { text-align: right; font-variant-numeric: tabular-nums; }
 .calc tr:last-child td { border-bottom: 0; font-weight: 700; }
-.calc-h { margin: 16px 2px 0; font: 600 12px var(--body); letter-spacing: .06em; text-transform: uppercase; color: var(--ink-soft); }
+.plan-warn { margin: 10px 2px 0; color: var(--haldi-text); }
+.calc-fold { margin-top: 6px; }
+.calc-fold > summary { display: flex; align-items: center; gap: 6px; min-height: 44px; padding: 0 2px; list-style: none; cursor: pointer; font: 600 13px var(--body); color: var(--ink-soft); }
+.calc-fold > summary::-webkit-details-marker { display: none; }
+.calc-fold .chev { width: 14px; height: 14px; color: var(--ink-faint); transition: transform .2s var(--ease); }
+.calc-fold[open] .chev { transform: rotate(180deg); }
+.calc-fold[open] .calc, .calc-fold[open] p { animation: fade .24s var(--ease); }
 
 details summary { cursor: pointer; }
 details > summary { list-style: none; } details > summary::-webkit-details-marker { display: none; }
@@ -261,12 +269,14 @@ dialog.sheet.rvsheet::before { margin: 10px auto 0; flex: none; }
 .item .gram span { color: var(--ink-faint); font-size: 14px; }
 .item .gram input.g { width: 64px; min-height: 36px; padding: 4px 6px; text-align: right; font-variant-numeric: tabular-nums; background: transparent; box-shadow: none; border-radius: 999px; }
 .item .meta { font-size: 13px; display: flex; gap: 8px; margin: 0; min-width: 0; white-space: nowrap; }
-.src { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; min-height: 40px; padding: 0 6px; border: 0; background: transparent; color: var(--ink-faint); font: 500 12px var(--body); cursor: pointer; border-radius: 999px; }
+.it-src { display: flex; margin: -6px 0 -4px; }
+.src { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 0 6px 0 0; border: 0; background: transparent; color: var(--ink-faint); font: 500 12px var(--body); cursor: pointer; border-radius: 999px; }
 .src:hover, .src[aria-expanded=true] { color: var(--ink); }
 .src i { width: 7px; height: 7px; border-radius: 50%; background: var(--ink-faint); flex: none; }
 .src.t-lib i { background: var(--leaf); } .src.t-new i { background: var(--neel); } .src.t-check i { background: var(--haldi); } .src.t-own i { background: var(--kokum); }
 .src svg { width: 12px; height: 12px; transition: transform .2s var(--ease); }
 .src[aria-expanded=true] svg { transform: rotate(180deg); }
+.item .it-sub .x { margin-left: auto; }
 .item .x { background: transparent; border: 0; color: var(--ink-faint); width: 40px; height: 40px; margin-right: -10px; display: grid; place-items: center; cursor: pointer; flex: none; border-radius: 50%; }
 .item .x:hover { color: var(--mirch); }
 .item .x svg { width: 14px; height: 14px; }
