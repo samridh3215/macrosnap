@@ -96,16 +96,19 @@ function zone(eaten, r, inProgress, cut, maintenance) {
 
 function rangeLine(d) {
   const r = d.targets.range, eaten = d.totals.kcal;
-  const max = Math.max(r.ceiling * 1.12, eaten * 1.04);
-  const p = (v) => `${(Math.min(v, max) / max) * 100}%`;
+  // The bar starts below the minimum rather than at 0, so the range gets most of the width instead of the last third.
+  const lo = r.floor * 0.6, max = Math.max(r.ceiling * 1.12, eaten * 1.04);
+  const p = (v) => `${((Math.min(Math.max(v, lo), max) - lo) / (max - lo)) * 100}%`;
+  const top = d.goal?.type === "cut" && r.ceiling === d.targets.tdee ? "maintenance" : "limit";
+  // Labels sit in their own row at the ends (they collided when placed under their points); the bar keeps tick marks.
   return `<div class="rangeline" aria-hidden="true">
     <div class="track"></div>
     <div class="safe" style="left:${p(r.floor)};width:calc(${p(r.ceiling)} - ${p(r.floor)})"></div>
     <div class="band" style="left:${p(r.bandLow)};width:calc(${p(r.bandHigh)} - ${p(r.bandLow)})"></div>
+    <i class="tick" style="left:${p(r.floor)}"></i><i class="tick" style="left:${p(r.ceiling)}"></i>
     <div class="you" style="left:${p(eaten)}"></div>
-    <span class="tick" style="left:${p(r.floor)}">min ${n0(r.floor)}</span>
-    <span class="tick" style="left:${p(r.ceiling)}">${d.goal?.type === "cut" && r.ceiling === d.targets.tdee ? "maintenance" : "limit"} ${n0(r.ceiling)}</span>
-  </div>`;
+  </div>
+  <div class="range-legend"><span>min <b class="num">${n0(r.floor)}</b></span><span>${top} <b class="num">${n0(r.ceiling)}</b></span></div>`;
 }
 
 function draw() {

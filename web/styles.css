@@ -95,12 +95,14 @@ h2 .h2-act { margin-left: auto; display: flex; gap: 2px; }
 .pill.over, .pill.under { background: color-mix(in srgb, var(--mirch) 16%, transparent); color: var(--mirch); }
 .pill.high { background: color-mix(in srgb, var(--haldi) 18%, transparent); color: var(--haldi); }
 
-.rangeline { position: relative; height: 38px; margin: 18px 2px 6px; }
+.rangeline { position: relative; height: 26px; margin: 18px 2px 2px; }
 .rangeline .track { position: absolute; left: 0; right: 0; top: 10px; height: 6px; border-radius: 3px; background: var(--rim-soft); }
 .rangeline .safe { position: absolute; top: 10px; height: 6px; background: color-mix(in srgb, var(--leaf) 28%, transparent); }
 .rangeline .band { position: absolute; top: 8px; height: 10px; border-radius: 5px; background: var(--leaf); }
 .rangeline .you { position: absolute; top: 3px; width: 20px; height: 20px; margin-left: -10px; border-radius: 50%; background: var(--ink); box-shadow: 0 0 0 4px var(--plate); }
-.rangeline .tick { position: absolute; top: 24px; transform: translateX(-50%); font-size: 12px; color: var(--ink-faint); white-space: nowrap; }
+.rangeline .tick { position: absolute; top: 5px; width: 2px; height: 16px; margin-left: -1px; border-radius: 1px; background: var(--ink-faint); }
+.range-legend { display: flex; justify-content: space-between; gap: 12px; margin: 0 2px 10px; font-size: 12px; color: var(--ink-faint); }
+.range-legend b { font-weight: 600; color: var(--ink-soft); }
 
 /* ---------- macros: one card, four columns ---------- */
 .macros { display: grid; grid-template-columns: repeat(4, 1fr); background: var(--plate); border-radius: var(--r); box-shadow: var(--shadow); margin-bottom: 14px; }
