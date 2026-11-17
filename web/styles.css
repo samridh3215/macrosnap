@@ -375,7 +375,11 @@ code { font-size: 13px; background: var(--well); padding: 1px 6px; border-radius
 .fe-more[open] > *:not(summary) { margin-top: 12px; }
 .fe-del { margin-top: 16px; padding-left: 0; }
 
-.cam-video { display: block; width: 100%; aspect-ratio: 3 / 4; max-height: 62vh; object-fit: cover; background: #000; border-radius: 20px; margin-bottom: 14px; }
+.cam-wrap { position: relative; overflow: hidden; border-radius: 20px; margin-bottom: 14px; background: #000; }
+.cam-video { display: block; width: 100%; aspect-ratio: 3 / 4; max-height: 62vh; object-fit: cover; background: #000; transform-origin: center; }
+.cam-zoom { position: absolute; left: 50%; bottom: 12px; transform: translateX(-50%); display: flex; gap: 4px; padding: 4px; border-radius: 22px; background: rgba(0,0,0,.45); backdrop-filter: blur(6px); }
+.cam-zoom button { min-width: 44px; height: 36px; padding: 0 10px; border: 0; border-radius: 18px; background: transparent; color: #fff; font: 600 14px var(--display); cursor: pointer; }
+.cam-zoom button.on { background: #fff; color: #000; }
 
 /* ---------- motion: slight, on arrival only ---------- */
 .btn, .chip, .icon-btn, .seg button, .tabs a, .src { transition: transform .14s var(--ease), background-color .15s, color .15s, box-shadow .15s; }
