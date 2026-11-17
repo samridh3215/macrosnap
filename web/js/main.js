@@ -1,7 +1,6 @@
 import { renderAccount } from "./account.js";
 import { renderFoods } from "./foods.js";
 import { openLog } from "./log.js";
-import { openCamera } from "./camera.js";
 import { ensureSignedIn } from "./login.js";
 import { ensureProfile } from "./onboarding.js";
 import { openReview } from "./review.js";
@@ -65,12 +64,8 @@ window.addEventListener("hashchange", route);
 
 const refreshToday = () => { if ((location.hash || "#/today").startsWith("#/today")) renderToday(view); };
 
-export function startPhoto() {
-  openCamera({
-    onPhoto: (blob) => openReview({ blob, mode: "photo", date: dayState.date, onSaved: refreshToday }),
-    onPickFile: () => $("#photoInput").click(),
-  });
-}
+/** Opens the phone's own camera app, so its 0.5x / 1x / 2x lens selector works. */
+export function startPhoto() { $("#shootInput").click(); }
 window.addEventListener("macrosnap:photo", startPhoto);
 export function startGallery() { $("#photoInput").click(); }
 $("#logFab").onclick = () => openLog({ date: () => dayState.date, onSaved: refreshToday, startCamera: startPhoto, startGallery });
@@ -80,7 +75,7 @@ async function showAccountTab() {
   try { const me = await get("/api/me"); if (me.hosted) { $("#tabAccount").hidden = false; $("#tabs").classList.add("hosted"); } } catch {}
 }
 
-$("#photoInput").onchange = (e) => {
+for (const id of ["#photoInput", "#shootInput"]) $(id).onchange = (e) => {
   const f = e.target.files[0]; e.target.value = "";
   if (f) openReview({ blob: f, mode: "photo", date: dayState.date, onSaved: refreshToday });
 };
