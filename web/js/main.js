@@ -1,4 +1,6 @@
+import { renderAccount } from "./account.js";
 import { renderFoods } from "./foods.js";
+import { openLog } from "./log.js";
 import { openCamera } from "./camera.js";
 import { ensureSignedIn } from "./login.js";
 import { ensureProfile } from "./onboarding.js";
@@ -6,6 +8,8 @@ import { openReview } from "./review.js";
 import { renderSettings } from "./settings.js";
 import { dayState, renderToday } from "./today.js";
 import { renderTrends } from "./trends.js";
+import { renderWeighIns } from "./weighins.js";
+import { get } from "./api.js";
 import { $, toast } from "./util.js";
 
 const view = $("#view");
@@ -43,12 +47,13 @@ function sheetGestures(dlg) {
   });
 }
 document.querySelectorAll("dialog.sheet").forEach(sheetGestures);
-const routes = { today: renderToday, foods: renderFoods, trends: renderTrends, settings: renderSettings };
+const routes = { today: renderToday, foods: renderFoods, trends: renderTrends, settings: renderSettings, account: renderAccount, weighins: renderWeighIns };
+const TAB_OF = { weighins: "trends" };
 
 function route() {
   const [path, qs] = (location.hash.replace(/^#\/?/, "") || "today").split("?");
   const name = routes[path] ? path : "today";
-  document.querySelectorAll("#tabs a").forEach((a) => a.classList.toggle("on", a.dataset.tab === name));
+  document.querySelectorAll("#tabs a").forEach((a) => { const on = a.dataset.tab === (TAB_OF[name] || name); a.classList.toggle("on", on); on ? a.setAttribute("aria-current", "page") : a.removeAttribute("aria-current"); });
   const params = new URLSearchParams(qs || "");
   routes[name](view, params);
   const add = name === "today" && params.get("add");
@@ -67,7 +72,13 @@ export function startPhoto() {
   });
 }
 window.addEventListener("macrosnap:photo", startPhoto);
-$("#snapFab").onclick = startPhoto;
+export function startGallery() { $("#photoInput").click(); }
+$("#logFab").onclick = () => openLog({ date: () => dayState.date, onSaved: refreshToday, startCamera: startPhoto, startGallery });
+
+/** Hosted servers get a fifth tab for the account. Self-hosted ones have no account, so it stays hidden. */
+async function showAccountTab() {
+  try { const me = await get("/api/me"); if (me.hosted) { $("#tabAccount").hidden = false; $("#tabs").classList.add("hosted"); } } catch {}
+}
 
 $("#photoInput").onchange = (e) => {
   const f = e.target.files[0]; e.target.value = "";
@@ -97,4 +108,4 @@ if ("serviceWorker" in navigator) {
   navigator.serviceWorker.register("/sw.js").catch(() => {});
 }
 // Nothing renders until you're signed in (hosted) and the body profile is complete; shared photos wait behind both.
-ensureSignedIn().catch(() => {}).then(() => ensureProfile()).catch(() => {}).then(() => { route(); handleShared().catch(() => {}); });
+ensureSignedIn().catch(() => {}).then(() => ensureProfile()).catch(() => {}).then(() => { route(); showAccountTab(); handleShared().catch(() => {}); });

@@ -1,6 +1,6 @@
-const VERSION = "macrosnap-v28";
+const VERSION = "macrosnap-v34";
 const SHELL = ["/", "/index.html", "/styles.css", "/manifest.webmanifest", "/icons/icon-192.png",
-  "/js/main.js", "/js/api.js", "/js/util.js", "/js/today.js", "/js/review.js", "/js/foods.js", "/js/trends.js", "/js/settings.js", "/js/charts.js", "/js/camera.js", "/js/onboarding.js", "/js/login.js"];
+  "/js/main.js", "/js/api.js", "/js/util.js", "/js/today.js", "/js/review.js", "/js/foods.js", "/js/trends.js", "/js/settings.js", "/js/charts.js", "/js/camera.js", "/js/onboarding.js", "/js/login.js", "/js/log.js", "/js/weighins.js", "/js/account.js"];
 
 self.addEventListener("install", (e) => {
   e.waitUntil(caches.open(VERSION).then((c) => c.addAll(SHELL.map((u) => new Request(u, { cache: "reload" })))).then(() => self.skipWaiting()));

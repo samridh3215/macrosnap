@@ -10,7 +10,7 @@ export async function renderSettings(root, params) {
     if (m) toast(m, 3500);
     history.replaceState(null, "", "#/settings");
   }
-  root.innerHTML = `<h1>Settings</h1>${connectionCard()}<div id="rest"><p class="empty"><span class="spin"></span>Loading…</p></div>`;
+  root.innerHTML = `<header class="page-head"><h1>Settings</h1></header>${connectionCard()}<div id="rest"><div class="sk sk-row"></div><div class="sk sk-row"></div></div>`;
   bindConnection(root);
   try { me = await get("/api/me"); } catch (e) {
     $("#conn", root).open = true;
@@ -18,61 +18,31 @@ export async function renderSettings(root, params) {
     return;
   }
   drawRest(root);
-  if (me.hosted) await drawAccount(root);
+  if (me.hosted) hostedTweaks(root);
   enter($("#rest", root));
 }
 
-/** Hosted servers: who you're signed in as, your plan and allowance, billing and sign-out. */
-async function drawAccount(root) {
-  // Sessions replace the app token here; the OpenRouter key stays (bring your own = free).
-  $("#sToken", root)?.closest("label")?.remove();
+/** Hosted servers sign you in with a session, so the app token goes. Who you are and billing live on the Account tab. */
+function hostedTweaks(root) {
+  const t = $("#sToken", root); if (t) t.closest("label").hidden = true;
   const sum = $("#conn .acc-s", root);
   if (sum) sum.textContent = local.orKey ? "Your own key" : "Using Macro Snap's AI";
-  let a;
-  try { a = await get("/api/account"); } catch (e) { toast(e.message); return; }
-  const ac = a.access;
-  const fmtDate = (d) => (d ? new Date(d).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" }) : "");
-  const usage = local.orKey
-    ? "Your own OpenRouter key is used, so AI is free here and nothing is counted."
-    : ac.paid
-      ? `AI this year: $${ac.spentUsd.toFixed(2)} of $${ac.capUsd.toFixed(2)} included.`
-      : `${Math.min(ac.photos, ac.freePhotos)} of ${ac.freePhotos} free photos used.`;
-  const until = a.plan?.status === "cancelled" ? `· ends ${fmtDate(a.plan.endsAt)}` : a.plan?.renewsAt ? `· renews ${fmtDate(a.plan.renewsAt)}` : "";
-  const plan = ac.paid ? `<b>Subscribed</b> <span class="muted">${esc(until)}</span>` : "<b>Free</b>";
-  const html = `<h2>Account</h2><div class="card acct">
-    <div class="row"><span>${esc(a.email)}</span></div>
-    <div class="row small">${plan}</div>
-    <p class="small muted" style="margin:6px 0 12px">${usage}</p>
-    <div class="row">
-      ${!ac.paid && a.billing ? `<a class="btn sm primary" href="/api/billing/checkout">Subscribe · ${esc(a.priceLabel)}</a>` : ""}
-      ${a.plan?.portalUrl ? `<a class="btn sm" href="${esc(a.plan.portalUrl)}" target="_blank" rel="noopener">Manage billing</a>` : ""}
-      <button class="btn sm" id="sOut">Sign out</button>
-    </div>
-    <details style="margin-top:14px"><summary class="small muted">Delete account</summary>
-      <p class="small muted">Deletes your meals, weights, food library and account. This can't be undone. Export your data first.</p>
-      <button class="btn sm" id="sDelAcct">Delete my account</button>
-    </details>
-  </div>`;
-  $("#rest", root).insertAdjacentHTML("afterbegin", html);
-  $("#sOut", root).onclick = async () => { await post("/api/auth/logout").catch(() => {}); location.replace("/"); };
-  $("#sDelAcct", root).onclick = async () => {
-    if (!confirm("Delete your account and all your data? This can't be undone.")) return;
-    try { await del("/api/account"); location.replace("/"); } catch (e) { toast(e.message, 4000); }
-  };
 }
 
 const CHEV = `<svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9.5l6 6 6-6"/></svg>`;
 
 function connectionCard() {
   const cur = (() => { try { return localStorage.getItem("theme") || "dark"; } catch { return "dark"; } })();
-  return `<h2>Appearance</h2><div class="card">
-    <div class="seg" id="sTheme" role="group" aria-label="Theme">${["dark", "light", "system"].map((t) => `<button data-t="${t}" class="${cur === t ? "on" : ""}">${t[0].toUpperCase() + t.slice(1)}</button>`).join("")}</div>
-  </div>
-  <details class="acc" id="conn"><summary>Connection<span class="acc-s">${local.token ? "Token saved" : "Needs a token"}</span>${CHEV}</summary><div class="acc-b">
+  const mask = (k) => (k ? `${k.slice(0, 6)}••••••••${k.slice(-4)}` : "Not set");
+  return `<section class="set-sec"><h2>Appearance</h2><div class="group">
+    <div class="seg" id="sTheme" role="group" aria-label="Theme">${["dark", "light", "system"].map((t) => `<button data-t="${t}" aria-pressed="${cur === t}" class="${cur === t ? "on" : ""}">${t[0].toUpperCase() + t.slice(1)}</button>`).join("")}</div>
+  </div></section>
+  <section class="set-sec"><h2>AI</h2>
+  <details class="acc" id="conn"><summary><span class="acc-t"><span>OpenRouter key</span><span class="acc-v num">${esc(mask(local.orKey))}</span></span><span class="acc-s">${local.token ? "Token saved" : "Needs a token"}</span>${CHEV}</summary><div class="acc-b">
     <label class="f">App token (matches APP_TOKEN on the server)<input id="sToken" type="password" autocomplete="off" value="${esc(local.token || "")}"></label>
     <label class="f"><span>OpenRouter API key <span class="tiny">(stored only on this phone, sent with each request)</span></span><input id="sOr" type="password" autocomplete="off" placeholder="sk-or-…" value="${esc(local.orKey || "")}"></label>
     <div class="row"><button class="btn sm primary" id="sConnSave">Save</button><button class="btn sm" id="sTest">Test</button><span class="small muted" id="sTestOut"></span></div>
-  </div></details>`;
+  </div></details></section>`;
 }
 
 function bindConnection(root) {
@@ -80,7 +50,7 @@ function bindConnection(root) {
     const t = b.dataset.t;
     try { localStorage.setItem("theme", t); } catch {}
     document.documentElement.dataset.theme = t;
-    document.querySelector("meta[name=theme-color]")?.setAttribute("content", t === "light" || (t === "system" && matchMedia("(prefers-color-scheme: light)").matches) ? "#f3f1ec" : "#0d0f11");
+    document.querySelector("meta[name=theme-color]")?.setAttribute("content", t === "light" || (t === "system" && matchMedia("(prefers-color-scheme: light)").matches) ? "#f4f6f5" : "#0b0d0e");
     document.querySelectorAll("#sTheme button").forEach((x) => x.classList.toggle("on", x === b));
   });
   $("#sConnSave", root).onclick = () => { saveLocal({ token: $("#sToken", root).value.trim(), orKey: $("#sOr", root).value.trim() }); toast("Saved on this device"); renderSettings(root, new URLSearchParams()); };
@@ -108,8 +78,8 @@ function drawRest(root) {
   }).join("");
 
   $("#rest", root).innerHTML = `
-    <h2>Body</h2>
-    <div class="card">
+    <section class="set-sec"><h2>Targets</h2>
+    <div class="panel"><h3 class="panel-h">Profile and goal</h3>
       <div class="grid2">
         <label class="f">Weight (kg)<input id="pW" type="number" inputmode="decimal" step="0.1" value="${p.weightKg ?? ""}"></label>
         <label class="f">Height (cm)<input id="pH" type="number" inputmode="decimal" value="${p.heightCm ?? ""}"></label>
@@ -117,15 +87,14 @@ function drawRest(root) {
         <label class="f">Sex<select id="pS"><option value="">Not set</option><option value="male" ${p.sex === "male" ? "selected" : ""}>Male</option><option value="female" ${p.sex === "female" ? "selected" : ""}>Female</option></select></label>
         <label class="f"><span>Body fat % <span class="tiny">(optional)</span></span><input id="pBf" type="number" inputmode="decimal" step="0.5" value="${p.bodyFatPct ?? ""}"></label>
       </div>
-      <label class="check"><input type="checkbox" id="pAth" ${p.athlete ? "checked" : ""}> Train 5+ times a week</label>
+      <label class="switch-row"><span><b>I train hard most weeks</b><small>Five or more structured sessions a week</small></span><input type="checkbox" role="switch" id="pAth" ${p.athlete ? "checked" : ""}></label>
       <div class="small">BMR <b class="num">${n0(b.kcal)} kcal</b> via <b>${esc(b.formula)}</b>${b.lbmKg ? ` · lean mass ${b.lbmKg} kg` : ""}</div>
       <details class="fold"><summary class="tiny" style="color:var(--ink-soft);margin-top:8px">How this was picked</summary>
         <p class="tiny muted" style="margin:6px 0 0">${b.candidates.map((c) => `${esc(c.formula)} ${n0(c.kcal)}`).join(" · ")}${b.assumptions.length ? ` · ${b.assumptions.map(esc).join(" · ")}` : ""}</p>
         <p class="tiny muted">Enter whatever you know. The best formula for your data is picked automatically (body fat → Katch–McArdle/Cunningham; height and age → Mifflin–St Jeor).</p></details>
     </div>
 
-    <h2>Goal</h2>
-    <div class="card">
+    <div class="panel"><h3 class="panel-h">Goal</h3>
       <div class="seg" id="gType">${["cut", "maintain", "bulk"].map((g) => `<button data-g="${g}" class="${s.goal.type === g ? "on" : ""}">${{ cut: "Lose fat", maintain: "Maintain", bulk: "Gain muscle" }[g]}</button>`).join("")}</div>
       <label class="f" style="margin-top:14px">Rate (% body weight per week) <input id="gRate" type="number" inputmode="decimal" step="0.05" min="0" max="1.5" value="${s.goal.ratePctPerWeek}"></label>
       <div class="tiny muted" id="gPreview" style="margin:-6px 0 14px"></div>
@@ -135,17 +104,18 @@ function drawRest(root) {
       </div>
       <label class="f" style="margin-bottom:0">Time zone<input id="sTz" value="${esc(s.tz)}"></label>
     </div>
+    <div class="mults" aria-label="Activity multipliers"><span class="mults-h">Activity multipliers</span>${me.presetOrder.map((id) => `<span class="mult"><span>Level ${esc(me.presets[id].label)}</span><b class="num">×${me.presets[id].neat}</b></span>`).join("")}</div>
 
-    <details class="acc" style="margin-top:12px"><summary>Activity levels<span class="acc-s">Fine-tune</span>${CHEV}</summary><div class="acc-b">
+    <details class="acc"><summary><span class="acc-t"><span>Activity levels</span><span class="acc-v">Tap to edit each level</span></span><span class="acc-s">Fine-tune</span>${CHEV}</summary><div class="acc-b">
       <p class="tiny muted" style="margin:0">Each level (1 least active to 5 super active) sets how active you are and how macros are split. The defaults are a good start.</p>
       ${presetRows}
       <p class="tiny muted">Movement is the non-exercise activity multiplier. Default exercise is used only when no activity is logged or synced. Carbs fill what's left after protein and fat, so harder days get more carbs.</p>
       <button class="btn xs ghost" id="pReset">Reset to defaults</button>
     </div></details>
-    <div class="save-row"><button class="btn primary" id="saveAll">Save body, goal and activity levels</button></div>
+    <div class="save-row"><button class="btn primary" id="saveAll">Save body, goal and activity levels</button></div></section>
 
-    <h2>Integrations</h2>
-    <details class="acc"><summary>AI models<span class="acc-s">${s.models.mode === "auto" ? "Auto" : "Manual"}</span>${CHEV}</summary><div class="acc-b">
+    <section class="set-sec"><h2>AI models</h2>
+    <details class="acc"><summary><span class="acc-t"><span>Photo and nutrition models</span><span class="acc-v">What reads your plate and works out new foods</span></span><span class="acc-s">${s.models.mode === "auto" ? "Auto" : "Manual"}</span>${CHEV}</summary><div class="acc-b">
       <div class="seg" id="mMode"><button data-m="auto" class="${s.models.mode === "auto" ? "on" : ""}">Auto</button><button data-m="manual" class="${s.models.mode === "manual" ? "on" : ""}">Manual</button></div>
       <div id="mAuto" class="small muted ${s.models.mode === "auto" ? "" : "hidden"}" style="margin-top:12px">Picks the newest fast vision model and a strong reasoning model from OpenRouter's live catalogue. <span id="mResolved"></span></div>
       <div id="mManual" class="${s.models.mode === "manual" ? "" : "hidden"}" style="margin-top:12px">
@@ -156,12 +126,17 @@ function drawRest(root) {
       </div>
       <div class="row" style="margin-top:14px"><button class="btn sm primary" id="mSave">Save models</button></div>
     </div></details>
-    <details class="acc"><summary>Strava<span class="acc-s">${!me.strava.enabled ? "Not configured" : me.strava.connected ? "Connected" : "Not connected"}</span>${CHEV}</summary><div class="acc-b">
+    </section>
+    <section class="set-sec"><h2>Strava</h2>
+    <details class="acc" open><summary><span class="acc-t"><span class="stat-dot ${me.strava.connected ? "on" : ""}"></span><span>Activity sync</span></span><span class="acc-s">${!me.strava.enabled ? "Not configured" : me.strava.connected ? "Connected" : "Not connected"}</span>${CHEV}</summary><div class="acc-b">
       ${!me.strava.enabled ? `<p class="small muted" style="margin:0">Not configured on the server. Set STRAVA_CLIENT_ID and STRAVA_CLIENT_SECRET (see README).</p>`
         : me.strava.connected ? `<div class="spread"><span>Connected as <b>${esc(me.strava.athlete || "athlete")}</b></span><button class="btn sm ghost danger" id="stOff">Disconnect</button></div>
           <p class="tiny muted" style="margin-bottom:0">Today's and yesterday's activities sync automatically when you open the day; older days via Sync Strava.</p>`
         : `<button class="btn" id="stOn">Connect Strava</button><p class="tiny muted" style="margin-bottom:0">Uses watch calories when available, otherwise power, pace or heart rate.</p>`}
     </div></details>
+    </section>
+    <section class="set-sec"><h2>Your data</h2>
+      <div class="group"><button class="row-btn" id="sExport"><span class="acc-t"><span>Export everything</span><span class="acc-v">Meals, weigh-ins, days and your food library as one JSON file</span></span>${CHEV.replace("chev", "chev r")}</button></div></section>
     <p class="tiny muted" style="text-align:center;margin-top:24px">Macro Snap · ${esc(me.uid)} · ${esc(me.llm)}</p>`;
 
   bindRest(root);
@@ -227,6 +202,18 @@ function bindRest(root) {
     } catch (e) { toast(e.message); }
   };
 
+  $("#sExport", root).onclick = async (e) => {
+    const btn = e.currentTarget; btn.disabled = true;
+    try {
+      const headers = {};
+      if (local.token) headers.authorization = `Bearer ${local.token}`;
+      const r = await fetch("/api/export", { headers });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const url = URL.createObjectURL(await r.blob());
+      const a = document.createElement("a"); a.href = url; a.download = `macrosnap-export-${new Date().toISOString().slice(0, 10)}.json`; a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 2000); toast("Export downloaded");
+    } catch (x) { toast(`Export failed: ${x.message}`); } finally { btn.disabled = false; }
+  };
   $("#stOn", root)?.addEventListener("click", () => { location.href = `/api/strava/connect?t=${encodeURIComponent(local.token || "")}`; });
   $("#stOff", root)?.addEventListener("click", async () => { if (!confirm("Disconnect Strava?")) return; await del("/api/strava"); toast("Disconnected"); me = await get("/api/me"); drawRest(root); });
 }
