@@ -1,33 +1,54 @@
 import { del, get, post, put } from "./api.js";
 import { openReview } from "./review.js";
-import { $, closeSheet, enter, esc, n0, n1, openSheet, scale, toast, today, uid, unitOf } from "./util.js";
+import { $, closeSheet, enter, esc, ICONS, n0, n1, openSheet, scale, toast, today, uid, unitOf } from "./util.js";
 
 /** The shared food library (Capella-backed): browse, fix names, correct numbers, verify, recompute. */
 let q = "";
+let filter = "all";
 let timer = null;
+const SRC = { llm: ["vision", "Vision"], label: ["label", "Label"], user: ["manual", "Manual"] };
+const FILTERS = [["all", "All"], ["vision", "Vision"], ["label", "Label"], ["manual", "Manual"]];
+let all = [];
 
 export async function renderFoods(root) {
-  root.innerHTML = `<div class="page-head"><h1>Your foods</h1><button class="btn" id="fAdd">+ Add food</button></div>
-    <input id="fq" type="search" placeholder="Search your foods" aria-label="Search your foods" value="${esc(q)}" />
-    <p class="small muted" style="margin:10px 2px 16px">Each food is worked out once per 100 g, then reused for any portion. Fix a number here and every future log uses it.</p>
-    <ul class="list" id="flist"><li class="empty"><span class="spin"></span>Loading…</li></ul>`;
+  root.innerHTML = `<header class="page-head"><div><h1>Library</h1><p class="head-sub num" id="fCount">&nbsp;</p></div><button class="btn tonal" id="fAdd">${ICONS.plus}Add food</button></header>
+    <div class="searchbar">${ICONS.search}<input id="fq" type="search" placeholder="Search foods and aliases" aria-label="Search foods and aliases" value="${esc(q)}" /></div>
+    <div class="filters" role="group" aria-label="Filter by source">${FILTERS.map(([id, l]) => `<button data-f="${id}" aria-pressed="${filter === id}" class="${filter === id ? "on" : ""}">${l}</button>`).join("")}</div>
+    <p class="small muted" style="margin:14px 2px 12px">Each food is worked out once per 100 g, then reused for any portion. Fix a number here and every future log uses it.</p>
+    <ul class="foodlist" id="flist"><li class="sk sk-row"></li><li class="sk sk-row"></li><li class="sk sk-row"></li></ul>`;
   $("#fAdd", root).onclick = () => openFoodCreator(q, () => load(root));
   $("#fq", root).oninput = (e) => { q = e.target.value; clearTimeout(timer); timer = setTimeout(() => load(root), 250); };
+  $(".filters", root).onclick = (e) => {
+    const f = e.target.dataset.f; if (!f) return; filter = f;
+    root.querySelectorAll(".filters button").forEach((b) => { const on = b.dataset.f === f; b.classList.toggle("on", on); b.setAttribute("aria-pressed", on); });
+    paint(root);
+  };
   await load(root);
 }
 
 async function load(root) {
   const list = $("#flist", root);
   try {
-    const foods = await get(`/api/foods${q ? `?q=${encodeURIComponent(q)}` : ""}`);
-    list.innerHTML = foods.length ? foods.map((f) => `<li class="li tap" data-key="${esc(f.key)}">
-      <div class="grow"><div class="name">${esc(f.name)}${f.verified ? ` <span class="badge b-ver">verified</span>` : ""}${!f.ok ? ` <span class="badge b-warn">check</span>` : ""}${f.confidence === "low" ? ` <span class="badge b-fuzzy">low confidence</span>` : ""}</div>
-        <div class="sub"><span class="m-p">${n1(f.per100g.protein)}p</span> <span class="m-c">${n1(f.per100g.carbs)}c</span> <span class="m-f">${n1(f.per100g.fat)}f</span>${f.unit ? ` · 1 ${esc(f.unit.name)} = ${n0(f.unit.grams)} ${unitOf(f)}` : ""} · logged ${f.hits}×</div></div>
-      <div class="kcal">${n0(f.per100g.kcal)}<small>per 100 ${unitOf(f)}</small></div></li>`).join("")
-      : `<li class="empty">${q ? "No matches." : "Nothing here yet. Foods appear as you log meals."}</li>`;
-    list.querySelectorAll("[data-key]").forEach((li) => li.onclick = () => openFoodEditor(li.dataset.key, () => load(root)));
+    all = await get(`/api/foods${q ? `?q=${encodeURIComponent(q)}` : ""}`);
+    paint(root);
     if (!list.dataset.seen) { list.dataset.seen = "1"; enter(list); }
   } catch (e) { list.innerHTML = `<li class="empty">${esc(e.message)}</li>`; }
+}
+
+function paint(root) {
+  const list = $("#flist", root);
+  const foods = all.filter((f) => filter === "all" || (SRC[f.source?.kind]?.[0] ?? "vision") === filter);
+  $("#fCount", root).textContent = `${all.length} food${all.length === 1 ? "" : "s"} · values per 100 g`;
+  list.innerHTML = foods.length ? foods.map((f) => {
+    const [, srcLabel] = SRC[f.source?.kind] ?? SRC.llm;
+    const note = f.source?.kind === "label" ? "From label" : f.source?.kind === "user" ? "Edited by you" : `Logged ${f.hits}×`;
+    return `<li><button class="food" data-key="${esc(f.key)}">
+      <span class="food-top"><span class="name">${esc(f.name)}</span><span class="kc num">${n0(f.per100g.kcal)}<small> kcal</small></span></span>
+      <span class="food-tags"><span class="tag">${srcLabel}</span>${(f.aliases || []).slice(0, 3).map((a) => `<span class="tag alias">${esc(a)}</span>`).join("")}${f.verified ? `<span class="tag ok">verified</span>` : ""}${!f.ok ? `<span class="tag warn">check</span>` : ""}${f.confidence === "low" ? `<span class="tag warn">low confidence</span>` : ""}</span>
+      <span class="food-foot num"><span>P ${n1(f.per100g.protein)} · C ${n1(f.per100g.carbs)} · F ${n1(f.per100g.fat)} · Fibre ${n1(f.per100g.fiber)}${f.unit ? ` · 1 ${esc(f.unit.name)} = ${n0(f.unit.grams)} ${unitOf(f)}` : ""}</span><span>${note}</span></span></button></li>`;
+  }).join("") : `<li class="empty-card"><span class="disc">${ICONS.book}</span><b>${q || filter !== "all" ? "No matches" : "Your library starts empty"}</b><p>${q || filter !== "all" ? "Try another search or filter." : "Every food you log lands here with its values per 100 g, ready to reuse."}</p>${q || filter !== "all" ? "" : `<button class="btn tonal" id="fFirst">Log your first meal</button>`}</li>`;
+  list.querySelectorAll("[data-key]").forEach((b) => b.onclick = () => openFoodEditor(b.dataset.key, () => load(root)));
+  $("#fFirst", list)?.addEventListener("click", () => $("#logFab").click());
 }
 
 const X = `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>`;

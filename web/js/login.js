@@ -27,37 +27,45 @@ export async function ensureSignedIn() {
 
 function showLogin(state, initialError) {
   const el = document.createElement("section");
-  el.className = "gate";
+  el.className = "gate signin";
   el.setAttribute("aria-labelledby", "loginTitle");
   el.innerHTML = `<div class="gate-in">
-    ${MARK}
-    <h1 id="loginTitle">Macro Snap</h1>
-    <p class="gate-sub">Snap a meal, get calories and macros you can check. Your food library is yours alone and learns from your edits.</p>
-    ${state.google ? `<a class="btn google-btn" href="/api/auth/google">${GOOGLE}<span>Continue with Google</span></a>
-    <div class="or"><span>or</span></div>` : ""}
-    <form id="loginForm" novalidate>
-      <label class="f">Email<input id="lEmail" type="email" inputmode="email" autocomplete="email" placeholder="you@example.com" required></label>
-      <p class="gate-err small" id="lErr" role="alert">${esc(initialError)}</p>
-      <button class="btn primary" id="lGo" type="submit">Email me a sign-in link</button>
-    </form>
-    <p class="tiny muted gate-fine">${esc(state.freePhotos)} photos free, then ${esc(state.priceLabel)}. Or bring your own OpenRouter key and it's free.</p>
+    <header>${MARK}<h1 id="loginTitle">Log a meal from one photo</h1>
+    <p class="gate-sub">Share a picture of your plate. We name each item, check the numbers, and you confirm before anything is saved.</p></header>
+    <div id="loginBody"></div>
   </div>`;
   document.body.append(el);
   document.body.classList.add("gated");
   enter(el);
+  const bodyEl = $("#loginBody", el);
 
-  $("#loginForm", el).onsubmit = async (e) => {
-    e.preventDefault();
-    const email = $("#lEmail", el).value.trim(), errEl = $("#lErr", el), go = $("#lGo", el);
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { errEl.textContent = "Enter a valid email address."; return; }
-    errEl.textContent = ""; go.disabled = true;
-    try {
-      await post("/api/auth/email", { email });
-      $(".gate-in", el).innerHTML = `${MARK}<h1>Check your email</h1>
-        <p class="gate-sub">We sent a sign-in link to <b>${esc(email)}</b>. It works once and expires in 15 minutes.</p>
-        <button class="btn" id="lBack">Use a different email</button>`;
-      $("#lBack", el).onclick = () => { el.remove(); showLogin(state, ""); };
-    } catch (x) { errEl.textContent = x.message; go.disabled = false; toast(x.message); }
+  const entering = (prefill = "") => {
+    bodyEl.innerHTML = `${state.google ? `<a class="btn wide google-btn" href="/api/auth/google">${GOOGLE}<span>Continue with Google</span></a>
+      <div class="or"><span>or use email</span></div>` : ""}
+      <form id="loginForm" novalidate>
+        <label class="f" for="lEmail">Email<input id="lEmail" type="email" inputmode="email" autocomplete="email" placeholder="you@example.com" value="${esc(prefill)}" required></label>
+        <p class="gate-err small" id="lErr" role="alert">${esc(initialError)}</p>
+        <button class="btn primary wide" id="lGo" type="submit">Send sign-in link</button>
+      </form>
+      <p class="tiny muted gate-fine">New accounts get ${esc(state.freePhotos)} photo logs or $1 of AI, whichever comes first. Typed logging is always free. After that it's ${esc(state.priceLabel)}, or bring your own OpenRouter key and it's free.</p>`;
+    initialError = "";
+    $("#loginForm", el).onsubmit = async (e) => {
+      e.preventDefault();
+      const email = $("#lEmail", el).value.trim(), errEl = $("#lErr", el), go = $("#lGo", el);
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { errEl.textContent = "Enter a valid email address."; return; }
+      errEl.textContent = ""; go.disabled = true; go.textContent = "Sending…";
+      try { await post("/api/auth/email", { email }); sent(email); }
+      catch (x) { errEl.textContent = x.message; go.disabled = false; go.textContent = "Send sign-in link"; toast(x.message); }
+    };
+    $("#lEmail", el).focus({ preventScroll: true });
   };
-  $("#lEmail", el).focus();
+
+  const sent = (email) => {
+    bodyEl.innerHTML = `<div class="panel sent"><span class="disc"><svg aria-hidden="true" viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16v12H4z"/><path d="M4 7l8 6 8-6"/></svg></span>
+      <div><b>Check your email</b><span>We sent a link to ${esc(email)}. It works once and expires in 15 minutes.</span></div></div>
+      <div class="stack"><button class="btn wide" id="lResend">Resend link</button><button class="btn wide ghost" id="lBack">Use a different email</button></div>`;
+    $("#lResend", el).onclick = async (e) => { e.target.disabled = true; try { await post("/api/auth/email", { email }); toast("Link sent again"); } catch (x) { toast(x.message); } setTimeout(() => { e.target.disabled = false; }, 8000); };
+    $("#lBack", el).onclick = () => entering(email);
+  };
+  entering();
 }

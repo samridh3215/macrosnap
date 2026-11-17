@@ -168,6 +168,10 @@ export interface Activity {
   kcalNet: number; // gross minus the resting burn already counted in BMR
   method: "device" | "power" | "acsm" | "hr" | "met" | "manual";
   sufferScore?: number;
+  /** Inputs of a manual entry, kept so it can be edited later. */
+  kcalInput?: number;
+  distanceKm?: number;
+  elevationM?: number;
 }
 
 export interface Day {

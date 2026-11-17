@@ -344,13 +344,29 @@ export function buildApp(d: Deps) {
     return c.json(await dayView(await user(uid), date));
   });
 
+  const buildActivity = (u: User, a: z.infer<typeof ActivityInput>, id: string): Activity => {
+    const est = estimateActivity({ minutes: a.minutes, sport: a.sport, avgHr: a.avgHr, deviceKcal: a.kcal, distanceKm: a.distanceKm, elevationM: a.elevationM }, u.profile, computeBmr(u.profile).kcal);
+    return { id, source: "manual", name: a.name, sport: a.sport, minutes: a.minutes, avgHr: a.avgHr, kcalGross: est.gross, kcalNet: est.net, method: a.kcal ? "device" : est.method, kcalInput: a.kcal, distanceKm: a.distanceKm, elevationM: a.elevationM };
+  };
+
   app.post("/api/day/:date/activities", async (c) => {
     const u = await user(c.get("uid")), date = c.req.param("date");
     const a = await json(c, ActivityInput);
-    const est = estimateActivity({ minutes: a.minutes, sport: a.sport, avgHr: a.avgHr, deviceKcal: a.kcal, distanceKm: a.distanceKm, elevationM: a.elevationM }, u.profile, computeBmr(u.profile).kcal);
-    const act: Activity = { id: randomUUID(), source: "manual", name: a.name, sport: a.sport, minutes: a.minutes, avgHr: a.avgHr, kcalGross: est.gross, kcalNet: est.net, method: a.kcal ? "device" : est.method };
     const day = (await store.getDay(u.uid, date)) ?? { uid: u.uid, date, preset: null, activities: [], stravaSyncedAt: null };
-    day.activities.push(act);
+    day.activities.push(buildActivity(u, a, randomUUID()));
+    await store.putDay(day);
+    await bump(u.uid);
+    return c.json(await dayView(u, date));
+  });
+
+  app.put("/api/day/:date/activities/:id", async (c) => {
+    const u = await user(c.get("uid")), date = c.req.param("date"), id = c.req.param("id");
+    const a = await json(c, ActivityInput);
+    const day = await store.getDay(u.uid, date);
+    const i = day ? day.activities.findIndex((x) => x.id === id) : -1;
+    if (!day || i < 0) return c.json({ error: "not found" }, 404);
+    if (day.activities[i].source === "strava") return c.json({ error: "Strava sessions can't be edited; they sync from Strava" }, 400);
+    day.activities[i] = buildActivity(u, a, id);
     await store.putDay(day);
     await bump(u.uid);
     return c.json(await dayView(u, date));

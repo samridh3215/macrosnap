@@ -31,7 +31,7 @@ export const closeSheet = (id = "sheet") => { const d = $(`#${id}`); if (d.open)
 
 /** Drinks and other pourables are shown per 100 ml (1 ml ≈ 1 g for the maths). Display only. */
 const LIQUID = /\b(beverage|drinks?|juice|milk|lassi|chaas|buttermilk|shakes?|smoothie|soda|cola|coffee|tea|chai|water|soup|broth|rasam|kombucha|beer|wine|whisky|vodka|rum)\b/i;
-const SOLID = /\b(powder|chocolate|cake|bar|cookies?|biscuits?|bread|cheese|paneer|curd|yogurt|khoya|peda|barfi|leaves)\b/i;
+const SOLID = /\b(chestnuts?|singhara|melon|spinach|cress|flour|oil|ghee|mayonnaise|powder|chocolate|cake|bar|cookies?|biscuits?|bread|cheese|paneer|curd|yogurt|khoya|peda|barfi|leaves)\b/i;
 export const isLiquid = (f) => !SOLID.test(f?.name || "") && (/beverage|drink/i.test(f?.category || "") || LIQUID.test(f?.name || ""));
 export const unitOf = (f) => (isLiquid(f) ? "ml" : "g");
 
@@ -82,3 +82,32 @@ export function guessMeal() {
 }
 export const MEAL_TYPES = ["Breakfast", "Lunch", "Snack", "Dinner", "Pre-workout", "Post-workout"];
 export const uid = () => (crypto.randomUUID ? crypto.randomUUID() : String(Date.now() + Math.random()));
+
+/** A library food as a review-sheet item: one piece (or 100 g/ml) to start. */
+export function foodItem(f) {
+  const grams = f.unit?.grams || 100, p = f.per100g;
+  return { id: uid(), seenName: f.name, query: f.name, lookupKey: f.key, key: f.key, name: f.name,
+    portion: f.unit ? `1 ${f.unit.name}` : `100 ${unitOf(f)}`, grams, isAddon: false, per100g: { ...p }, totals: scale(p, grams),
+    match: { type: "exact" }, confidence: f.confidence || "medium" };
+}
+export const ICONS = {
+  close: `<svg aria-hidden="true" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>`,
+  search: `<svg aria-hidden="true" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4 4"/></svg>`,
+  plus: `<svg aria-hidden="true" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>`,
+  minus: `<svg aria-hidden="true" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 12h14"/></svg>`,
+  camera: `<svg aria-hidden="true" viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>`,
+  label: `<svg aria-hidden="true" viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4h14v16H5z"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>`,
+  gallery: `<svg aria-hidden="true" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16v14H4z"/><path d="M4 16l5-5 4 4 3-3 4 4"/><circle cx="15.5" cy="9" r="1.5"/></svg>`,
+  type: `<svg aria-hidden="true" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M5 6h14v12H5zM8 10h1M11 10h1M14 10h2M8 14h8"/></svg>`,
+  plate: `<svg aria-hidden="true" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.75"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="4.5"/></svg>`,
+  book: `<svg aria-hidden="true" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4h4v16H5zM10 4h4v16h-4zM15.5 5l3.5-1 2 15.5-3.5 1z"/></svg>`,
+  swap: `<svg aria-hidden="true" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M7 4L4 7l3 3M4 7h12M17 20l3-3-3-3M20 17H8"/></svg>`,
+  trash: `<svg aria-hidden="true" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M5 7h14M10 7V5h4v2M7 7l1 12h8l1-12"/></svg>`,
+  warn: `<svg aria-hidden="true" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4l9 16H3z"/><path d="M12 10v4M12 17h.01"/></svg>`,
+  info: `<svg aria-hidden="true" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg>`,
+  chevR: `<svg aria-hidden="true" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>`,
+  back: `<svg aria-hidden="true" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>`,
+  more: `<svg aria-hidden="true" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg>`,
+  bolt: `<svg aria-hidden="true" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M13 3L5 14h6l-1 7 8-11h-6l1-7z"/></svg>`,
+  run: `<svg aria-hidden="true" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="14" cy="4.5" r="1.5"/><path d="M8 21l3-6 3 2v4M6 12l3-4 4 1 3 4 3 1"/></svg>`,
+};

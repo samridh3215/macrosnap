@@ -1,55 +1,51 @@
-// Tiny dependency-free SVG charts.
-const W = 340, H = 170, PAD = { l: 34, r: 8, t: 10, b: 20 };
-
-function axis(min, max, ticks = 4) {
-  const step = niceStep((max - min) / ticks);
-  const lo = Math.floor(min / step) * step, hi = Math.ceil(max / step) * step;
-  const vals = []; for (let v = lo; v <= hi + 1e-9; v += step) vals.push(+v.toFixed(6));
-  return { lo, hi, vals };
-}
-function niceStep(raw) {
-  const p = 10 ** Math.floor(Math.log10(raw || 1)), n = raw / p;
-  return (n <= 1 ? 1 : n <= 2 ? 2 : n <= 5 ? 5 : 10) * p;
-}
-const fmt = (v) => (Math.abs(v) >= 1000 ? `${(v / 1000).toFixed(v % 1000 ? 1 : 0)}k` : `${+v.toFixed(1)}`);
-
-/** Daily intake bars against the healthy band (floor→ceiling) and the target line. */
-export function intakeChart(series) {
-  const vals = series.flatMap((s) => [s.intake ?? 0, s.ceiling, s.target]);
-  const { lo, hi, vals: ticks } = axis(0, Math.max(...vals) * 1.05);
-  const iw = W - PAD.l - PAD.r, ih = H - PAD.t - PAD.b, bw = iw / series.length;
-  const y = (v) => PAD.t + ih - ((v - lo) / (hi - lo)) * ih;
-  let g = ticks.map((t) => `<line x1="${PAD.l}" x2="${W - PAD.r}" y1="${y(t)}" y2="${y(t)}" stroke="var(--rim-soft)" stroke-width=".6"/><text x="${PAD.l - 4}" y="${y(t) + 3}" text-anchor="end">${fmt(t)}</text>`).join("");
-  series.forEach((s, i) => {
-    const x = PAD.l + i * bw;
-    g += `<rect x="${x}" y="${y(s.ceiling)}" width="${bw}" height="${y(s.floor) - y(s.ceiling)}" fill="var(--leaf)" opacity=".14"/>`;
-    if (s.intake != null) {
-      const col = i === series.length - 1 ? "var(--rim)" : s.intake < s.floor || s.intake > s.ceiling ? "var(--mirch)" : Math.abs(s.intake - s.target) / s.target <= 0.05 ? "var(--leaf)" : "var(--haldi)";
-      g += `<rect x="${x + bw * 0.18}" y="${y(s.intake)}" width="${bw * 0.64}" height="${Math.max(0, y(0) - y(s.intake))}" rx="1.5" fill="${col}"/>`;
-    }
-  });
-  g += `<polyline fill="none" stroke="var(--ink)" stroke-width="1.3" stroke-dasharray="3 2" points="${series.map((s, i) => `${PAD.l + i * bw + bw / 2},${y(s.target)}`).join(" ")}"/>`;
-  g += labels(series, bw);
-  return `<svg class="chart" viewBox="0 0 ${W} ${H}">${g}</svg>`;
+// Tiny dependency-free charts: HTML bars for calories, SVG for the weight line.
+/** Group a long series into weekly averages so 90 days stays readable. */
+export function weekly(series) {
+  const out = [];
+  for (let i = 0; i < series.length; i += 7) {
+    const g = series.slice(i, i + 7), logged = g.filter((s) => s.intake != null);
+    const avg = (k) => g.reduce((a, s) => a + (s[k] ?? 0), 0) / g.length;
+    out.push({ date: g[0].date, intake: logged.length ? logged.reduce((a, s) => a + s.intake, 0) / logged.length : null, target: avg("target"), floor: avg("floor"), ceiling: avg("ceiling"), today: g.some((s) => s.today) });
+  }
+  return out;
 }
 
-/** Scale weights as dots, smoothed trend as a line. */
+/** Daily intake bars. In range is the bright accent, outside it the dim one; the target is a thin line and maintenance a dashed one. */
+export function intakeChart(series, { isWeekly = false, ended }) {
+  const bars = isWeekly ? weekly(series) : series;
+  const H = 168;
+  const max = Math.max(...bars.flatMap((s) => [s.intake ?? 0, s.ceiling, s.target])) * 1.08 || 1;
+  const y = (v) => Math.round((v / max) * H);
+  const last = bars.length - 1;
+  const tgt = bars.reduce((a, s) => a + s.target, 0) / bars.length, top = bars.reduce((a, s) => a + s.ceiling, 0) / bars.length;
+  const f = (n) => Math.round(n).toLocaleString("en-IN");
+  const cols = bars.map((s, i) => {
+    const inProgress = i === last && !isWeekly && s.date >= ended;
+    const ok = s.intake != null && s.intake >= s.floor && s.intake <= s.ceiling;
+    const bg = s.intake == null ? "transparent" : inProgress ? "var(--rim)" : ok ? "var(--haldi)" : "var(--accent-2)";
+    const label = s.intake == null ? "" : `${f(s.intake)} kcal`;
+    return `<div class="bar-col" title="${s.date.slice(8)}/${s.date.slice(5, 7)} ${label}" role="img" aria-label="${s.date} ${label || "nothing logged"}"><i style="height:${s.intake == null ? 0 : y(s.intake)}px;background:${bg}"></i></div>`;
+  }).join("");
+  const every = Math.ceil(bars.length / 6);
+  const axis = bars.map((s, i) => (i % every === 0 ? `<span style="left:${((i + 0.5) / bars.length) * 100}%">${s.date.slice(8)}/${s.date.slice(5, 7)}</span>` : "")).join("");
+  return `<div class="bars" style="height:${H}px">
+      <div class="ref ref-top" style="bottom:${y(top)}px"></div><span class="ref-l ref-l-top" style="bottom:${y(top) + 2}px">Maint. ${f(top)}</span>
+      <div class="ref ref-tgt" style="bottom:${y(tgt)}px"></div><span class="ref-l ref-l-tgt" style="bottom:${y(tgt) + 2}px">Target ${f(tgt)}</span>
+      <div class="bar-cols" style="gap:${bars.length > 20 ? 2 : 5}px">${cols}</div>
+    </div>
+    <div class="bar-axis" aria-hidden="true">${axis}</div>`;
+}
+
+/** Scale weights as grey dots, the smoothed trend as the one accent line. */
 export function weightChart(series) {
   const pts = series.filter((s) => s.weight != null || s.trend != null);
-  if (!pts.length) return `<p class="empty">Log your weight to see a trend.</p>`;
+  if (!pts.length) return `<p class="empty sm">Log your weight to see a trend.</p>`;
+  const W = 322, H = 140, N = series.length;
   const vals = pts.flatMap((s) => [s.weight, s.trend].filter((v) => v != null));
-  const { lo, hi, vals: ticks } = axis(Math.min(...vals) - 0.3, Math.max(...vals) + 0.3);
-  const iw = W - PAD.l - PAD.r, ih = H - PAD.t - PAD.b, bw = iw / series.length;
-  const y = (v) => PAD.t + ih - ((v - lo) / (hi - lo)) * ih;
-  const x = (i) => PAD.l + i * bw + bw / 2;
-  let g = ticks.map((t) => `<line x1="${PAD.l}" x2="${W - PAD.r}" y1="${y(t)}" y2="${y(t)}" stroke="var(--rim-soft)" stroke-width=".6"/><text x="${PAD.l - 4}" y="${y(t) + 3}" text-anchor="end">${fmt(t)}</text>`).join("");
-  g += `<polyline fill="none" stroke="var(--neel)" stroke-width="2.4" points="${series.map((s, i) => (s.trend != null ? `${x(i)},${y(s.trend)}` : "")).filter(Boolean).join(" ")}"/>`;
-  series.forEach((s, i) => { if (s.weight != null) g += `<circle cx="${x(i)}" cy="${y(s.weight)}" r="2.6" fill="var(--ink)" opacity=".55"/>`; });
-  g += labels(series, bw);
-  return `<svg class="chart" viewBox="0 0 ${W} ${H}">${g}</svg>`;
-}
-
-function labels(series, bw) {
-  const every = Math.ceil(series.length / 6);
-  return series.map((s, i) => (i % every === 0 ? `<text x="${PAD.l + i * bw + bw / 2}" y="${H - 5}" text-anchor="middle">${s.date.slice(8)}/${s.date.slice(5, 7)}</text>` : "")).join("");
+  const lo = Math.min(...vals) - 0.2, hi = Math.max(...vals) + 0.2;
+  const x = (i) => (N === 1 ? W / 2 : (i / (N - 1)) * (W - 8) + 4);
+  const y = (w) => (1 - (w - lo) / (hi - lo || 1)) * (H - 12) + 6;
+  const line = series.map((s, i) => (s.trend != null ? `${x(i).toFixed(1)},${y(s.trend).toFixed(1)}` : "")).filter(Boolean).join(" ");
+  const dots = series.map((s, i) => (s.weight != null ? `<circle cx="${x(i).toFixed(1)}" cy="${y(s.weight).toFixed(1)}" r="2.6" fill="var(--ink-faint)"/>` : "")).join("");
+  return `<svg class="wchart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Weight trend"><line x1="0" y1="${H - 0.5}" x2="${W}" y2="${H - 0.5}" stroke="var(--raise)"/>${dots}<polyline points="${line}" fill="none" stroke="var(--accent)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 }
