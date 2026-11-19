@@ -202,7 +202,8 @@ export function buildApp(d: Deps) {
   /* ---------------- analysis ---------------- */
   app.post("/api/analyze", async (c) => {
     const u = await user(c.get("uid"));
-    const body = await json(c, z.object({ image: z.string().optional(), mediaType: z.string().optional(), note: z.string().optional() }));
+    const body = await json(c, z.object({ image: z.string().optional(), mediaType: z.string().optional(), note: z.string().optional(),
+      context: z.array(z.object({ name: z.string(), grams: z.number(), kcal: z.number(), protein: z.number(), carbs: z.number(), fat: z.number() })).max(30).optional() }));
     if (!body.image && !body.note?.trim()) return c.json({ error: "Send a photo or a description." }, 400);
     const ctx = ctxOf(c, u);
     if (hosted && !ctx.apiKey) {

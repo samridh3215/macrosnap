@@ -40,12 +40,16 @@ export function intakeChart(series, { isWeekly = false, ended }) {
 export function weightChart(series) {
   const pts = series.filter((s) => s.weight != null || s.trend != null);
   if (!pts.length) return `<p class="empty sm">Log your weight to see a trend.</p>`;
+  // Start the chart a few days before the first weigh-in (at least a week wide) so a new user's points aren't squeezed into one corner.
+  const first = series.findIndex((s) => s.weight != null || s.trend != null);
+  series = series.slice(Math.max(0, Math.min(first - 2, series.length - 7)));
   const W = 322, H = 140, N = series.length;
   const vals = pts.flatMap((s) => [s.weight, s.trend].filter((v) => v != null));
   const lo = Math.min(...vals) - 0.2, hi = Math.max(...vals) + 0.2;
   const x = (i) => (N === 1 ? W / 2 : (i / (N - 1)) * (W - 8) + 4);
   const y = (w) => (1 - (w - lo) / (hi - lo || 1)) * (H - 12) + 6;
   const line = series.map((s, i) => (s.trend != null ? `${x(i).toFixed(1)},${y(s.trend).toFixed(1)}` : "")).filter(Boolean).join(" ");
+  const wline = series.map((s, i) => (s.weight != null ? `${x(i).toFixed(1)},${y(s.weight).toFixed(1)}` : "")).filter(Boolean).join(" ");
   const dots = series.map((s, i) => (s.weight != null ? `<circle cx="${x(i).toFixed(1)}" cy="${y(s.weight).toFixed(1)}" r="2.6" fill="var(--ink-faint)"/>` : "")).join("");
-  return `<svg class="wchart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Weight trend"><line x1="0" y1="${H - 0.5}" x2="${W}" y2="${H - 0.5}" stroke="var(--raise)"/>${dots}<polyline points="${line}" fill="none" stroke="var(--accent)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+  return `<svg class="wchart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Weight trend"><line x1="0" y1="${H - 0.5}" x2="${W}" y2="${H - 0.5}" stroke="var(--raise)"/><polyline points="${wline}" fill="none" stroke="var(--ink-faint)" stroke-width="1.25" stroke-linejoin="round" opacity=".6"/>${dots}<polyline points="${line}" fill="none" stroke="var(--accent)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 }
