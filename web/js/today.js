@@ -107,9 +107,14 @@ function rangeBar(d) {
   const zones = [[lo, r.floor, "var(--accent-1)"], [r.floor, r.bandLow, "var(--haldi)"], [r.bandLow, r.bandHigh, "var(--accent-5)"], [r.bandHigh, r.ceiling, "var(--mirch)"], [r.ceiling, max, "var(--accent-2)"]]
     .map(([a, b, c]) => `<i style="width:${Math.max(0, pct(b) - pct(a)).toFixed(2)}%;background:${c}"></i>`).join("");
   const top = d.goal?.type === "cut" && r.ceiling === d.targets.tdee ? "Maintenance" : "Limit";
+  // Each label sits under the point it names. Keep them on the card and apart from each other.
+  const labels = [{ t: "Min", v: r.floor }, { t: "Target", v: d.targets.target }, { t: top, v: r.ceiling }].map((l) => ({ ...l, x: Math.min(88, Math.max(12, pct(l.v))), at: pct(l.v) }));
+  const GAP = 18;
+  for (let i = 1; i < labels.length; i++) if (labels[i].x - labels[i - 1].x < GAP) { const push = (GAP - (labels[i].x - labels[i - 1].x)) / 2; labels[i - 1].x -= push; labels[i].x += push; }
+  const ticks = labels.map((l) => `<i class="tick" style="left:${l.at.toFixed(2)}%"></i>`).join("");
   return `<div class="rangehead"><span>Today's range</span><button class="link-q" id="howSet">${ICONS.info}How it's set</button></div>
-  <div class="rangebar" role="img" aria-label="Minimum ${n0(r.floor)}, target ${n0(d.targets.target)}, ${top.toLowerCase()} ${n0(r.ceiling)}, eaten ${n0(eaten)}"><div class="zones">${zones}</div><span class="you" style="left:${pct(eaten).toFixed(2)}%"></span></div>
-  <div class="rangelabels"><div><span>Min</span><b class="num">${n0(r.floor)}</b></div><div class="mid"><span>Target</span><b class="num">${n0(d.targets.target)}</b></div><div class="end"><span>${top}</span><b class="num">${n0(r.ceiling)}</b></div></div>`;
+  <div class="rangebar" role="img" aria-label="Minimum ${n0(r.floor)}, target ${n0(d.targets.target)}, ${top.toLowerCase()} ${n0(r.ceiling)}, eaten ${n0(eaten)}"><div class="zones">${zones}</div>${ticks}<span class="you" style="left:${pct(eaten).toFixed(2)}%"></span></div>
+  <div class="rangelabels">${labels.map((l) => `<div style="left:${l.x.toFixed(1)}%"><span>${l.t}</span><b class="num">${n0(l.v)}</b></div>`).join("")}</div>`;
 }
 
 function macros(d) {

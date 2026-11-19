@@ -1,7 +1,7 @@
 import { del, get, post } from "./api.js";
 import { openFoodEditor } from "./foods.js";
 import { dayState } from "./today.js";
-import { $, blobToImage, closeSheet, esc, guessMeal, ICONS, MEAL_TYPES, n0, n1, openSheet, r1, scale, scaleTo, sum, toast, uid } from "./util.js";
+import { $, closeSheet, esc, foodItem, guessMeal, ICONS, MEAL_TYPES, n0, n1, openSheet, photoToImage, r1, scale, scaleTo, sum, toast, uid } from "./util.js";
 
 /**
  * The meal review sheet: analysis results with per-item provenance, inline rename (which teaches
@@ -41,17 +41,18 @@ export async function openReview({ blob = null, note = "", mode = "photo", meal 
     await im.decode().catch(() => {}); S.lowres = im.naturalWidth > 0 && im.naturalWidth < 400;
   }
   body = openSheet(`<div id="rv" class="pane"></div>`);
+  setupSuggest($("#rv", body));
   const dlg = $("#sheet"); dlg.classList.add("rvsheet");
   dlg.addEventListener("close", () => dlg.classList.remove("rvsheet"), { once: true });
   render();
   if (blob) {
     try {
-      const img = await blobToImage(blob);
+      const img = await photoToImage(blob);
       const big = scaleTo(img, 1280);                        // one pass over the full-size photo; smaller copies come from it
       S.hero = big.toDataURL("image/jpeg", 0.86);            // what you see: sharp at full sheet width
       S.image = scaleTo(big, 1024).toDataURL("image/jpeg", 0.82).split(",")[1];  // what the vision model sees
       S.thumb = scaleTo(big, 640).toDataURL("image/jpeg", 0.8);                  // what is saved: crisp in lists and when reopened
-      big.width = 0;
+      big.width = 0; img.close?.();
       render();
       await analyze();
     } catch { setStatus("Couldn't read that image.", true); }
@@ -70,12 +71,20 @@ function setStatus(msg, err = false) { S.status = msg; S.err = err; const el = $
 async function analyze() {
   const note = ($("#rvNote", body)?.value ?? S.note).trim();
   S.note = note;
+  const kept = !S.image && S.mode === "photo" && S.items.some((i) => i.name); // photo not kept: adjust the logged items from the note
+  if (kept && !note) return setStatus("Type a note first, e.g. extra ghee.", true);
   if (!S.image && !note) return setStatus("Describe what you ate first.", true);
   S.busy = true; setStatus(`<span class="spin"></span>${S.image ? "Looking at your plate…" : "Reading what you ate…"}`);
   lock(true);
   try {
-    const r = await post("/api/analyze", { image: S.image ?? undefined, note });
-    S.items = r.items; S.name = r.mealName;
+    const before = S.items;
+    const context = kept ? before.filter((i) => i.name).map((i) => ({ name: i.name, grams: i.grams || 0, kcal: i.totals.kcal, protein: i.totals.protein, carbs: i.totals.carbs, fat: i.totals.fat })) : undefined;
+    const r = await post("/api/analyze", { image: S.image ?? undefined, note, context });
+    // Items that came back unchanged keep what you had (your edits, your numbers); the rest are the note's changes.
+    if (kept) r.items = r.items.map((n) => { const o = before.find((i) => i.name.toLowerCase() === n.name.toLowerCase() && Math.round(i.grams) === Math.round(n.grams)); return o ?? n; });
+    // If only extras came back (the note just adds things), the logged items stay as they were.
+    if (kept && r.items.length && r.items.every((n) => n.isAddon)) r.items = [...before, ...r.items];
+    S.items = r.items; if (!kept || !S.name) S.name = r.mealName;
         const parts = [`${r.stats.cacheHits} from your library`, r.stats.computed ? `${r.stats.computed} worked out by ${short(r.models.reasoning)}` : "", r.stats.suggestions ? `${r.stats.suggestions} to check` : ""].filter(Boolean);
     S.info = `Spotted by ${short(r.models.vision)}. ${parts.join(", ")}. Cost $${(r.usage?.costUsd ?? 0).toFixed(4)}, ${(r.stats.ms / 1000).toFixed(1)}s.`;
     S.status = [r.notes, ...r.warnings].filter(Boolean).map(esc).join(" · "); S.err = r.warnings.length > 0;
@@ -192,7 +201,7 @@ function render() {
         <input id="rvName" value="${esc(S.name)}" placeholder="Name this meal" aria-label="Meal name">
         <select id="rvType" aria-label="Meal type">${MEAL_TYPES.map((m) => `<option ${m === S.mealType ? "selected" : ""}>${m}</option>`).join("")}</select>
       </div>
-      ${S.mode === "photo" ? `<div class="rv-note"><input id="rvNote" type="text" enterkeyhint="done" placeholder="Add a note, e.g. extra ghee" value="${esc(S.note)}"><button class="btn xs" id="rvAnalyze">Update</button></div>` : ""}
+      ${S.mode === "photo" ? `<div class="rv-note"><input id="rvNote" type="text" enterkeyhint="done" placeholder="Add a note, e.g. extra ghee" value="${esc(S.note)}"><button class="btn xs" id="rvAnalyze">Update</button></div>${S.mealId && !S.image ? `<p class="tiny muted" style="margin:4px 2px 0">Update adjusts these items using your note. Saving keeps the note either way.</p>` : ""}` : ""}
       ${S.status ? `<div class="status ${S.err ? "err" : ""}" id="rvStatus">${S.status}</div>` : `<div id="rvStatus" class="status hidden"></div>`}
 
       <div id="rvItems">${S.items.map(itemHtml).join("")}</div>
@@ -237,6 +246,54 @@ async function resolveInto(idx, payload, busyText) {
     setStatus("");
   } catch (e) { setStatus(esc(e.message), true); }
   render();
+}
+
+/**
+ * Autocomplete for the food-name boxes: your library (everything you've logged, most used first,
+ * plus the foods already in the database). Picking one fills in its numbers; typing something new still works as before.
+ */
+function setupSuggest(root) {
+  let box = null, timer = null, seq = 0, active = null;
+  const close = () => { box?.remove(); box = null; active = null; };
+  const show = (input, foods) => {
+    close(); if (!foods.length) return;
+    active = input;
+    box = document.createElement("ul"); box.className = "sugg"; box.setAttribute("role", "listbox");
+    box.innerHTML = foods.map((f, i) => `<li role="option" data-i="${i}"><span class="sg-n">${esc(f.name)}</span><span class="sg-m num">${n0(f.per100g.kcal)} kcal/100 g${f.hits ? ` · logged ${f.hits}×` : ""}</span></li>`).join("");
+    const host = input.closest(".it-id, .addrow, .add-row") || input.parentElement; host.classList.add("sg-host"); host.appendChild(box);
+    box.onpointerdown = (e) => {
+      const li = e.target.closest("li"); if (!li) return;
+      e.preventDefault(); // keep focus, so no stray "change" fires before we swap the item
+      pick(input, foods[Number(li.dataset.i)]); close();
+    };
+  };
+  const pick = (input, f) => {
+    if (input.id === "rvAddName") {
+      const grams = Number($("#rvAddG", root).value) || undefined;
+      const it = foodItem(f); if (grams) { it.grams = grams; it.totals = scale(it.per100g, grams); }
+      S.items.push(it); render(); return;
+    }
+    const row = input.closest(".item"), idx = S.items.findIndex((i) => i.id === row.dataset.id), old = S.items[idx];
+    const it = foodItem(f); it.id = old.id;
+    if (old.grams) { it.grams = old.grams; it.totals = scale(it.per100g, old.grams); }
+    S.items[idx] = it; render();
+  };
+  root.addEventListener("input", (e) => {
+    const input = e.target;
+    if (!input.matches?.(".nm, #rvAddName")) return;
+    clearTimeout(timer);
+    const q = input.value.trim();
+    if (q.length < 2) return close();
+    const my = ++seq;
+    timer = setTimeout(async () => {
+      try {
+        const foods = (await get(`/api/foods?q=${encodeURIComponent(q)}&limit=6`));
+        if (my === seq && document.activeElement === input) show(input, foods);
+      } catch { /* suggestions are a convenience */ }
+    }, 160);
+  });
+  root.addEventListener("focusout", () => setTimeout(() => { if (box && document.activeElement !== active) close(); }, 120));
+  root.addEventListener("keydown", (e) => { if (e.key === "Escape" && box) { e.stopPropagation(); close(); } });
 }
 
 function bind(root) {

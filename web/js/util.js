@@ -51,6 +51,14 @@ export async function blobToImage(blob) {
   try { const img = new Image(); img.src = url; await img.decode(); return img; }
   finally { setTimeout(() => URL.revokeObjectURL(url), 1500); }
 }
+/** Decodes a photo already shrunk to ~1600 px wide. A full-resolution camera photo (50-200 MP) can
+ *  take hundreds of MB to decode, which makes low-memory phones kill the page, so shrink while decoding. */
+export async function photoToImage(blob) {
+  if (window.createImageBitmap) {
+    try { return await createImageBitmap(blob, { resizeWidth: 1600, resizeQuality: "medium" }); } catch {}
+  }
+  return blobToImage(blob);
+}
 /** Downscale to fit `max` in halving steps (one big jump from a 12 MP photo aliases and looks soft).
  *  Takes an image or a canvas, returns a canvas, so smaller sizes can be derived from a larger one. */
 export function scaleTo(src, max) {

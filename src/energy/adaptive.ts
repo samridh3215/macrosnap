@@ -50,10 +50,10 @@ export function computeAdaptive(days: AdaptiveDay[], opts: { minLogged?: number;
       interp[i] = nextI === prevI ? a : a + ((b - a) * (i - prevI)) / (nextI - prevI);
     }
   }
-  let ema: number | null = null;
+  let ema: number | null = null, steps = 0;
   const trend = sorted.map((d, i) => {
     const v = interp[i];
-    if (v != null) ema = ema == null ? v : ema + ALPHA * (v - ema);
+    if (v != null) { steps++; ema = ema == null ? v : ema + Math.max(ALPHA, 1 / steps) * (v - ema); } // early on the trend is a plain running average, so a handful of weigh-ins isn't dragged by the first one
     return { date: d.date, weight: d.weight, trend: v != null && ema != null ? Math.round(ema * 100) / 100 : null };
   });
 

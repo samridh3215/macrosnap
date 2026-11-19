@@ -57,13 +57,17 @@ export class NutritionService {
   models(ctx: Ctx) { return resolveModels(this.llm, ctx.settings, ctx.apiKey); }
 
   /** Photo and/or text → itemised meal with per-item provenance (cache / new / fuzzy). */
-  async analyze(input: { image?: string; mediaType?: string; note?: string }, ctx: Ctx): Promise<AnalyzeResult> {
+  async analyze(input: { image?: string; mediaType?: string; note?: string; context?: Array<{ name: string; grams: number; kcal: number; protein: number; carbs: number; fat: number }> }, ctx: Ctx): Promise<AnalyzeResult> {
     const t0 = Date.now();
     const models = await this.models(ctx);
     const note = (input.note || "").trim();
     const user: ChatPart[] = [];
     if (input.image) user.push({ type: "image_url", image_url: { url: `data:${input.mediaType || "image/jpeg"};base64,${input.image}` } });
-    user.push({
+    // A note on a meal that is already logged: tell the model what is in it, with its numbers, so the note adjusts it.
+    const existing = (input.context ?? []).slice(0, 30).map((i) => `- ${i.name}, ${Math.round(i.grams)} g, ${Math.round(i.kcal)} kcal (P ${Math.round(i.protein)} C ${Math.round(i.carbs)} F ${Math.round(i.fat)})`).join("\n");
+    if (existing && !input.image) {
+      user.push({ type: "text", text: `This meal is already logged with these items:\n${existing}\n\nThe user adds this note: ${note}\n\nReturn the full updated item list. Keep every existing item with the same name and grams unless the note changes it; add items for extras in the note (is_addon=true).` });
+    } else user.push({
       type: "text",
       text: input.image ? `Identify this meal.${note ? `\nUser note: ${note}` : ""}` : `No photo. Identify the meal from this description: ${note}`,
     });
