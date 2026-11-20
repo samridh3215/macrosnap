@@ -45,6 +45,16 @@ export function sum(list) {
   return { kcal: Math.round(t.kcal), protein: r1(t.protein), carbs: r1(t.carbs), fat: r1(t.fat), fiber: r1(t.fiber) };
 }
 
+/** Average weigh-in for the last 7 days (ending `to`) and the 7 before that. Null when there are none. */
+export function weekAverages(series, to) {
+  const day = (d, n) => { const x = new Date(`${d}T00:00:00`); x.setDate(x.getDate() - n); return x.toLocaleDateString("en-CA"); };
+  const c1 = day(to, 7), c2 = day(to, 14);
+  const avg = (a) => (a.length ? a.reduce((t, x) => t + x.weight, 0) / a.length : null);
+  const w = series.filter((x) => x.weight != null);
+  const cur = w.filter((x) => x.date > c1 && x.date <= to), prev = w.filter((x) => x.date > c2 && x.date <= c1);
+  return { cur: avg(cur), curN: cur.length, prev: avg(prev), prevN: prev.length };
+}
+
 /* ---------- images ---------- */
 export async function blobToImage(blob) {
   const url = URL.createObjectURL(blob);
