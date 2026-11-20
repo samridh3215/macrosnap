@@ -1,10 +1,14 @@
+import { renderAccount } from "./account.js";
 import { renderFoods } from "./foods.js";
-import { openCamera } from "./camera.js";
+import { openLog } from "./log.js";
+import { ensureSignedIn } from "./login.js";
 import { ensureProfile } from "./onboarding.js";
 import { openReview } from "./review.js";
 import { renderSettings } from "./settings.js";
 import { dayState, renderToday } from "./today.js";
 import { renderTrends } from "./trends.js";
+import { renderWeighIns } from "./weighins.js";
+import { get } from "./api.js";
 import { $, toast } from "./util.js";
 
 const view = $("#view");
@@ -42,12 +46,13 @@ function sheetGestures(dlg) {
   });
 }
 document.querySelectorAll("dialog.sheet").forEach(sheetGestures);
-const routes = { today: renderToday, foods: renderFoods, trends: renderTrends, settings: renderSettings };
+const routes = { today: renderToday, foods: renderFoods, trends: renderTrends, settings: renderSettings, account: renderAccount, weighins: renderWeighIns };
+const TAB_OF = { weighins: "trends" };
 
 function route() {
   const [path, qs] = (location.hash.replace(/^#\/?/, "") || "today").split("?");
   const name = routes[path] ? path : "today";
-  document.querySelectorAll("#tabs a").forEach((a) => a.classList.toggle("on", a.dataset.tab === name));
+  document.querySelectorAll("#tabs a").forEach((a) => { const on = a.dataset.tab === (TAB_OF[name] || name); a.classList.toggle("on", on); on ? a.setAttribute("aria-current", "page") : a.removeAttribute("aria-current"); });
   const params = new URLSearchParams(qs || "");
   routes[name](view, params);
   const add = name === "today" && params.get("add");
@@ -59,16 +64,18 @@ window.addEventListener("hashchange", route);
 
 const refreshToday = () => { if ((location.hash || "#/today").startsWith("#/today")) renderToday(view); };
 
-export function startPhoto() {
-  openCamera({
-    onPhoto: (blob) => openReview({ blob, mode: "photo", date: dayState.date, onSaved: refreshToday }),
-    onPickFile: () => $("#photoInput").click(),
-  });
-}
+/** Opens the phone's own camera app, so its 0.5x / 1x / 2x lens selector works. */
+export function startPhoto() { $("#shootInput").click(); }
 window.addEventListener("macrosnap:photo", startPhoto);
-$("#snapFab").onclick = startPhoto;
+export function startGallery() { $("#photoInput").click(); }
+$("#logFab").onclick = () => openLog({ date: () => dayState.date, onSaved: refreshToday, startCamera: startPhoto, startGallery });
 
-$("#photoInput").onchange = (e) => {
+/** Hosted servers get a fifth tab for the account. Self-hosted ones have no account, so it stays hidden. */
+async function showAccountTab() {
+  try { const me = await get("/api/me"); if (me.hosted) { $("#tabAccount").hidden = false; $("#tabs").classList.add("hosted"); } } catch {}
+}
+
+for (const id of ["#photoInput", "#shootInput"]) $(id).onchange = (e) => {
   const f = e.target.files[0]; e.target.value = "";
   if (f) openReview({ blob: f, mode: "photo", date: dayState.date, onSaved: refreshToday });
 };
@@ -95,5 +102,5 @@ if ("serviceWorker" in navigator) {
   navigator.serviceWorker.addEventListener("controllerchange", () => { if (hadController && !reloaded) { reloaded = true; location.reload(); } });
   navigator.serviceWorker.register("/sw.js").catch(() => {});
 }
-// Nothing renders until the body profile is complete; shared photos wait behind it too.
-ensureProfile().catch(() => {}).then(() => { route(); handleShared().catch(() => {}); });
+// Nothing renders until you're signed in (hosted) and the body profile is complete; shared photos wait behind both.
+ensureSignedIn().catch(() => {}).then(() => ensureProfile()).catch(() => {}).then(() => { route(); showAccountTab(); handleShared().catch(() => {}); });

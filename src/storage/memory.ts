@@ -1,7 +1,7 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import type { Alias, Correction, Day, Food, Meal, User, Weight } from "../types.js";
-import { ids, now, type Store } from "./store.js";
+import { ids, now, type FoodStore, type Store } from "./store.js";
 
 type Tables = {
   foods: Record<string, Food>;
@@ -40,28 +40,32 @@ export class MemoryStore implements Store {
     await writeFile(this.file, JSON.stringify(this.t));
   }
 
-  async getFood(key: string) { return clone(this.t.foods[ids.food(key)] ?? null); }
-  async putFood(f: Food) { this.t.foods[ids.food(f.key)] = clone(f); this.touch(); }
-  async deleteFood(key: string) { delete this.t.foods[ids.food(key)]; this.touch(); }
-  async listFoods({ q, limit = 200 }: { q?: string; limit?: number }) {
-    const needle = (q || "").toLowerCase();
-    return Object.values(this.t.foods)
-      .filter((f) => !needle || f.name.toLowerCase().includes(needle) || f.key.includes(needle) || f.aliases.some((a) => a.toLowerCase().includes(needle)))
-      .sort((a, b) => b.hits - a.hits || a.name.localeCompare(b.name))
-      .slice(0, limit).map(clone);
+  private libs = new Map<string, FoodStore>();
+  library(lib: string): FoodStore {
+    let l = this.libs.get(lib);
+    if (!l) { l = new MemoryLibrary(this.t, lib, () => this.touch()); this.libs.set(lib, l); }
+    return l;
   }
-  async listFoodIndex() { return Object.values(this.t.foods).map((f) => ({ key: f.key, name: f.name })); }
+  getFood(key: string) { return this.library("").getFood(key); }
+  putFood(f: Food) { return this.library("").putFood(f); }
+  deleteFood(key: string) { return this.library("").deleteFood(key); }
+  listFoods(o: { q?: string; limit?: number }) { return this.library("").listFoods(o); }
+  listFoodIndex() { return this.library("").listFoodIndex(); }
+  getAlias(alias: string) { return this.library("").getAlias(alias); }
+  putAlias(a: Alias) { return this.library("").putAlias(a); }
+  aliasesTo(target: string) { return this.library("").aliasesTo(target); }
+  bumpCorrection(from: string, to: string) { return this.library("").bumpCorrection(from, to); }
 
-  async getAlias(alias: string) { return clone(this.t.aliases[ids.alias(alias)] ?? null); }
-  async putAlias(a: Alias) { this.t.aliases[ids.alias(a.alias)] = clone(a); this.touch(); }
-  async aliasesTo(target: string) { return Object.values(this.t.aliases).filter((a) => a.target === target).map(clone); }
-
-  async bumpCorrection(from: string, to: string) {
-    const id = ids.correction(from, to);
-    const c = this.t.corrections[id] ?? { from, to, count: 0, updatedAt: now() };
-    c.count += 1; c.updatedAt = now();
-    this.t.corrections[id] = c; this.touch();
-    return c.count;
+  async purgeUser(uid: string) {
+    if (!uid) return;
+    delete this.t.users[ids.user(uid)];
+    for (const tbl of [this.t.meals, this.t.weights, this.t.days] as Array<Record<string, { uid: string }>>) {
+      for (const [id, v] of Object.entries(tbl)) if (v.uid === uid) delete tbl[id];
+    }
+    for (const tbl of [this.t.foods, this.t.aliases, this.t.corrections] as Array<Record<string, unknown>>) {
+      for (const id of Object.keys(tbl)) if (ownerOf(id) === uid) delete tbl[id];
+    }
+    this.touch();
   }
 
   async getUser(uid: string) { return clone(this.t.users[ids.user(uid)] ?? null); }
@@ -84,5 +88,41 @@ export class MemoryStore implements Store {
   async putDay(d: Day) { this.t.days[ids.day(d.uid, d.date)] = clone(d); this.touch(); }
   async listDays(uid: string, from: string, to: string) {
     return Object.values(this.t.days).filter((d) => d.uid === uid && inRange(d.date, from, to)).sort((a, b) => a.date.localeCompare(b.date)).map(clone);
+  }
+}
+
+/** Owner of a library row from its id: "food::<uid>::key" → uid, "food::key" → "" (shared). */
+function ownerOf(id: string): string {
+  const parts = id.split("::");
+  const n = parts[0] === "corr" ? 4 : 3;
+  return parts.length >= n ? parts[1] : "";
+}
+
+class MemoryLibrary implements FoodStore {
+  constructor(private t: Tables, private lib: string, private touch: () => void) {}
+  private mine<T>(tbl: Record<string, T>) { return Object.entries(tbl).filter(([id]) => ownerOf(id) === this.lib).map(([, v]) => v); }
+
+  async getFood(key: string) { return clone(this.t.foods[ids.food(key, this.lib)] ?? null); }
+  async putFood(f: Food) { this.t.foods[ids.food(f.key, this.lib)] = clone(f); this.touch(); }
+  async deleteFood(key: string) { delete this.t.foods[ids.food(key, this.lib)]; this.touch(); }
+  async listFoods({ q, limit = 200 }: { q?: string; limit?: number }) {
+    const needle = (q || "").toLowerCase();
+    return this.mine(this.t.foods)
+      .filter((f) => !needle || f.name.toLowerCase().includes(needle) || f.key.includes(needle) || f.aliases.some((a) => a.toLowerCase().includes(needle)))
+      .sort((a, b) => b.hits - a.hits || a.name.localeCompare(b.name))
+      .slice(0, limit).map(clone);
+  }
+  async listFoodIndex() { return this.mine(this.t.foods).map((f) => ({ key: f.key, name: f.name })); }
+
+  async getAlias(alias: string) { return clone(this.t.aliases[ids.alias(alias, this.lib)] ?? null); }
+  async putAlias(a: Alias) { this.t.aliases[ids.alias(a.alias, this.lib)] = clone(a); this.touch(); }
+  async aliasesTo(target: string) { return this.mine(this.t.aliases).filter((a) => a.target === target).map(clone); }
+
+  async bumpCorrection(from: string, to: string) {
+    const id = ids.correction(from, to, this.lib);
+    const c = this.t.corrections[id] ?? { from, to, count: 0, updatedAt: now() };
+    c.count += 1; c.updatedAt = now();
+    this.t.corrections[id] = c; this.touch();
+    return c.count;
   }
 }

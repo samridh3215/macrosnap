@@ -40,7 +40,9 @@ export class OpenRouterLLM implements LLM {
   constructor(private cache: Cache) {}
 
   private key(k?: string) {
-    const key = k || config.openrouterKey;
+    // Hosted mode never falls back to the platform key: the API passes it explicitly once a user is allowed to use it.
+    const key = k || (config.hosted ? "" : config.openrouterKey);
+    if (!key && config.hosted) throw new LLMError(`Your free photos are used up. Subscribe (${config.billing.priceLabel}) or add your own OpenRouter key in Settings to keep using AI.`, 402);
     if (!key) throw new LLMError("No OpenRouter API key. Add it in Settings → AI models.", 400);
     return key;
   }
@@ -93,6 +95,7 @@ export class OpenRouterLLM implements LLM {
         max_tokens: req.maxTokens ?? 4000,
         usage: { include: true },
       };
+      if (req.endUser) body.user = req.endUser;
       if (structured) {
         body.response_format = { type: "json_schema", json_schema: { name: req.schemaName, strict: true, schema } };
         body.provider = { require_parameters: true }; // only route to providers that honour the schema
@@ -120,9 +123,9 @@ export class OpenRouterLLM implements LLM {
         if (r.status === 429) throw new LLMError("OpenRouter rate limit — try again in a moment.", 429);
         // Some providers reject strict schemas; degrade to prompt-only JSON once.
         if (structured && attempt === 1 && (r.status === 400 || r.status === 404)) {
-          return this.json(req, true).catch((e2: Error) => { throw new LLMError(`${req.model}: ${msg} / plain retry: ${e2.message}`); });
+          return this.json(req, true).catch((e2: Error & { usage?: Usage }) => { throw Object.assign(new LLMError(`${req.model}: ${msg} / plain retry: ${e2.message}`), { usage: e2.usage }); });
         }
-        throw new LLMError(`${req.model}: ${msg}`, r.status >= 500 ? 502 : r.status);
+        throw Object.assign(new LLMError(`${req.model}: ${msg}`, r.status >= 500 ? 502 : r.status), { usage }); // earlier attempts were billed
       }
       if (data.usage) {
         usage.promptTokens += data.usage.prompt_tokens ?? 0;
@@ -140,6 +143,6 @@ export class OpenRouterLLM implements LLM {
         messages.push({ role: "user", content: [{ type: "text", text: `That reply was invalid: ${lastErr}\nReturn the corrected JSON only.${schemaHint}` }] });
       }
     }
-    throw new LLMError(`${req.model} returned invalid JSON: ${lastErr}`);
+    throw Object.assign(new LLMError(`${req.model} returned invalid JSON: ${lastErr}`), { usage });
   }
 }

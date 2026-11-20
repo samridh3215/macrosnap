@@ -1,0 +1,19 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "hosted-dev",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev:hosted"],
+      "port": 8090,
+      "autoPort": false
+    },
+    {
+      "name": "hosted-dev-paywall",
+      "runtimeExecutable": "env",
+      "runtimeArgs": ["FREE_PHOTOS=1", "npm", "run", "dev:hosted"],
+      "port": 8090,
+      "autoPort": false
+    }
+  ]
+}

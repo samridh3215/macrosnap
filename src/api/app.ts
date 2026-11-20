@@ -12,6 +12,7 @@ import { LLMError, type LLM } from "../llm/types.js";
 import type { Ctx, NutritionService } from "../nutrition/pipeline.js";
 import { sumMacros, validateNutrition } from "../nutrition/validate.js";
 import { getJSON, setJSON, type Cache } from "../storage/cache.js";
+import { accessFor, hostedKey, mountHosted, type HostedDeps } from "../hosted/routes.js";
 import { now, type Store } from "../storage/store.js";
 import * as strava from "../strava/strava.js";
 import {
@@ -20,7 +21,11 @@ import {
 } from "../types.js";
 import { addDays, eachDay, todayIn } from "../util/date.js";
 
-export interface Deps { store: Store; cache: Cache; repo: FoodRepo; nutrition: NutritionService; llm: LLM; webRoot: string }
+export interface Deps {
+  store: Store; cache: Cache; repo: FoodRepo; nutrition: NutritionService; llm: LLM; webRoot: string;
+  /** Present in hosted mode: sign-up, sessions, a food library per user, metered platform key. */
+  hosted?: HostedDeps;
+}
 
 type Env = { Variables: { uid: string } };
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -38,8 +43,13 @@ export function buildApp(d: Deps) {
     return c.json({ error: err.message || "server error" }, (status && status >= 400 && status < 600 ? status : 500) as 500);
   });
 
+  // First, so it also covers the hosted sign-in and webhook routes registered below.
+  app.use("/api/*", bodyLimit({ maxSize: 8 * 1024 * 1024, onError: (c) => c.json({ error: "payload too large" }, 413) }));
+
   /* ---------------- auth ---------------- */
-  app.use("/api/*", async (c, next) => {
+  const hosted = d.hosted;
+  if (hosted) mountHosted(app, hosted, store);
+  else app.use("/api/*", async (c, next) => {
     const p = c.req.path;
     if (p === "/api/health" || p === "/api/strava/callback" || p === "/api/strava/connect") return next();
     const token = (c.req.header("authorization") || "").replace(/^Bearer\s+/i, "") || c.req.header("x-app-token") || "";
@@ -48,7 +58,6 @@ export function buildApp(d: Deps) {
     c.set("uid", uid);
     return next();
   });
-  app.use("/api/*", bodyLimit({ maxSize: 8 * 1024 * 1024, onError: (c) => c.json({ error: "payload too large" }, 413) }));
 
   /* ---------------- helpers ---------------- */
   const defaultUser = (uid: string): User => ({ uid, profile: {}, settings: Settings.parse({}), strava: null, createdAt: now(), updatedAt: now() });
@@ -58,7 +67,19 @@ export function buildApp(d: Deps) {
     u.settings = Settings.parse(u.settings ?? {}); // migrate older docs to current defaults
     return u;
   }
-  const ctxOf = (c: Context<Env>, u: User): Ctx => ({ apiKey: c.req.header("x-openrouter-key") || undefined, settings: u.settings });
+  // Whose food library a request uses: one shared library self-hosted, the user's own when hosted.
+  const libOf = (c: Context<Env>) => (hosted ? c.get("uid") : "");
+  const repoOf = (c: Context<Env>) => repo.for(libOf(c));
+  const ownKey = (c: Context<Env>) => c.req.header("x-openrouter-key")?.trim() || undefined;
+
+  /** Context for a request that may call the AI. Hosted: own key, or the platform key if the plan allows it (metered). */
+  function ctxOf(c: Context<Env>, u: User): Ctx {
+    if (!hosted) return { apiKey: ownKey(c), settings: u.settings, lib: "" };
+    const { apiKey } = hostedKey(hosted, u.uid, ownKey(c));
+    // On the platform key the models are always picked automatically, so nobody can route paid calls to an expensive model.
+    const settings = apiKey && apiKey === hosted.platformKey ? { ...u.settings, models: { mode: "auto" as const } } : u.settings;
+    return { apiKey, settings, lib: u.uid };
+  }
   const bump = (uid: string) => cache.incr(`ver:${uid}`);
   const ver = async (uid: string) => (await cache.get(`ver:${uid}`)) || "0";
   const json = async <T>(c: Context<Env>, schema: z.ZodType<T>) => schema.parse(await c.req.json().catch(() => ({})));
@@ -141,7 +162,7 @@ export function buildApp(d: Deps) {
       store.listMeals(uid, "0000-01-01", "9999-12-31"),
       store.listWeights(uid, "0000-01-01", "9999-12-31"),
       store.listDays(uid, "0000-01-01", "9999-12-31"),
-      store.listFoods({ limit: 1_000_000 }),
+      repoOf(c).library.listFoods({ limit: 1_000_000 }),
     ]);
     c.header("content-disposition", `attachment; filename="macrosnap-export-${now().slice(0, 10)}.json"`);
     return c.json({ exportedAt: now(), uid, user: await user(uid), meals, weights, days, foods });
@@ -152,7 +173,7 @@ export function buildApp(d: Deps) {
     return c.json({
       uid: u.uid, profile: u.profile, settings: u.settings, presets: presetsFor(u.settings), presetOrder: PRESET_ORDER,
       bmr: computeBmr(u.profile), profileMissing: profileMissing(u.profile), strava: { enabled: strava.stravaEnabled(), connected: !!u.strava, athlete: u.strava?.athleteName ?? null },
-      serverHasOpenRouterKey: !!config.openrouterKey, llm: llm.kind,
+      serverHasOpenRouterKey: hosted ? true : !!config.openrouterKey, llm: llm.kind, hosted: !!hosted,
     });
   });
 
@@ -170,7 +191,7 @@ export function buildApp(d: Deps) {
   /* ---------------- models ---------------- */
   app.get("/api/models", async (c) => {
     const cap = c.req.query("cap");
-    const models = await llm.listModels(c.req.header("x-openrouter-key") || undefined);
+    const models = await llm.listModels(ownKey(c));
     return c.json(models
       .filter((m) => cap !== "vision" || m.inputModalities.includes("image"))
       .map((m) => ({ id: m.id, name: m.name, inPerM: +(m.promptPrice * 1e6).toFixed(3), outPerM: +(m.completionPrice * 1e6).toFixed(3), structured: m.supported.includes("structured_outputs"), reasoning: m.supported.includes("reasoning") }))
@@ -181,9 +202,18 @@ export function buildApp(d: Deps) {
   /* ---------------- analysis ---------------- */
   app.post("/api/analyze", async (c) => {
     const u = await user(c.get("uid"));
-    const body = await json(c, z.object({ image: z.string().optional(), mediaType: z.string().optional(), note: z.string().optional() }));
+    const body = await json(c, z.object({ image: z.string().optional(), mediaType: z.string().optional(), note: z.string().optional(),
+      context: z.array(z.object({ name: z.string(), grams: z.number(), kcal: z.number(), protein: z.number(), carbs: z.number(), fat: z.number() })).max(30).optional() }));
     if (!body.image && !body.note?.trim()) return c.json({ error: "Send a photo or a description." }, 400);
-    return c.json(await nutrition.analyze(body, ctxOf(c, u)));
+    const ctx = ctxOf(c, u);
+    if (hosted && !ctx.apiKey) {
+      const a = hosted.accounts.get(u.uid)!;
+      return c.json({ error: accessFor(hosted, a).reason, code: "paywall" }, 402);
+    }
+    const res = await nutrition.analyze(body, ctx);
+    // A free photo is used up only when it ran on the platform key.
+    if (hosted && ctx.apiKey === hosted.platformKey) hosted.accounts.record({ uid: u.uid, kind: "photo", tier: accessFor(hosted, hosted.accounts.get(u.uid)!).paid ? "paid" : "free" });
+    return c.json(res);
   });
 
   app.post("/api/resolve", async (c) => {
@@ -207,7 +237,7 @@ export function buildApp(d: Deps) {
 
   app.get("/api/foods", async (c) => {
     const [foods, counts] = await Promise.all([
-      store.listFoods({ q: c.req.query("q"), limit: Number(c.req.query("limit") || 200) }),
+      repoOf(c).library.listFoods({ q: c.req.query("q"), limit: Number(c.req.query("limit") || 200) }),
       loggedCounts(c.get("uid")),
     ]);
     const rows = foods.map((f) => ({ ...foodSummary(f), hits: counts.get(f.key) ?? 0 }));
@@ -217,9 +247,10 @@ export function buildApp(d: Deps) {
   });
 
   app.get("/api/foods/:key", async (c) => {
-    const f = await repo.get(c.req.param("key"));
+    const r = repoOf(c);
+    const f = await r.get(c.req.param("key"));
     if (!f) return c.json({ error: "not found" }, 404);
-    const [linkedAliases, counts] = await Promise.all([store.aliasesTo(f.key), loggedCounts(c.get("uid"))]);
+    const [linkedAliases, counts] = await Promise.all([r.library.aliasesTo(f.key), loggedCounts(c.get("uid"))]);
     return c.json({ ...f, hits: counts.get(f.key) ?? 0, linkedAliases });
   });
 
@@ -227,14 +258,15 @@ export function buildApp(d: Deps) {
     const body = await json(c, z.object({ name: z.string().min(1), per100g: Macros, unit: z.object({ name: z.string(), grams: z.number().positive() }).nullable().optional(), category: z.string().optional() }));
     const key = foodKey(body.name);
     if (!key) return c.json({ error: "name has no usable words" }, 400);
-    const existing = await repo.get(key);
+    const r = repoOf(c);
+    const existing = await r.get(key);
     const f: Food = {
       key, name: body.name.trim(), aliases: existing?.aliases ?? [], category: body.category ?? existing?.category ?? "custom",
       per100g: body.per100g, unit: body.unit ?? existing?.unit ?? null, ingredients: [], assumptions: "Entered by user",
       references: ["user"], confidence: "high", validation: validateNutrition(body.per100g), source: { kind: "user" },
       verified: true, hits: existing?.hits ?? 0, createdAt: existing?.createdAt ?? now(), updatedAt: now(), version: (existing?.version ?? 0) + 1,
     };
-    await repo.put(f);
+    await r.put(f);
     return c.json(f);
   });
 
@@ -243,17 +275,18 @@ export function buildApp(d: Deps) {
       name: z.string().min(1).optional(), per100g: Macros.optional(), unit: z.object({ name: z.string(), grams: z.number().positive() }).nullable().optional(),
       verified: z.boolean().optional(), category: z.string().optional(),
     }));
+    const r = repoOf(c);
     let key = c.req.param("key");
     let merged = false;
-    if (body.name) { const r = await repo.rename(key, body.name); key = r.food.key; merged = r.merged; }
-    const f = await repo.get(key);
+    if (body.name) { const rn = await r.rename(key, body.name); key = rn.food.key; merged = rn.merged; }
+    const f = await r.get(key);
     if (!f) return c.json({ error: "not found" }, 404);
     if (body.per100g) { f.per100g = body.per100g; f.validation = validateNutrition(f.per100g); f.source = { kind: "user" }; f.verified = true; }
     if (body.unit !== undefined) f.unit = body.unit;
     if (body.category) f.category = body.category;
     if (body.verified !== undefined) f.verified = body.verified;
     f.updatedAt = now(); f.version += 1;
-    await repo.put(f);
+    await r.put(f);
     return c.json({ food: f, merged });
   });
 
@@ -267,7 +300,7 @@ export function buildApp(d: Deps) {
     return c.json(await nutrition.recompute(c.req.param("key"), ctxOf(c, u), force, { recipe, note }));
   });
 
-  app.delete("/api/foods/:key", async (c) => { await repo.remove(c.req.param("key")); return c.json({ ok: true }); });
+  app.delete("/api/foods/:key", async (c) => { await repoOf(c).remove(c.req.param("key")); return c.json({ ok: true }); });
 
   /* ---------------- meals ---------------- */
   app.post("/api/meals", async (c) => {
@@ -312,13 +345,29 @@ export function buildApp(d: Deps) {
     return c.json(await dayView(await user(uid), date));
   });
 
+  const buildActivity = (u: User, a: z.infer<typeof ActivityInput>, id: string): Activity => {
+    const est = estimateActivity({ minutes: a.minutes, sport: a.sport, avgHr: a.avgHr, deviceKcal: a.kcal, distanceKm: a.distanceKm, elevationM: a.elevationM }, u.profile, computeBmr(u.profile).kcal);
+    return { id, source: "manual", name: a.name, sport: a.sport, minutes: a.minutes, avgHr: a.avgHr, kcalGross: est.gross, kcalNet: est.net, method: a.kcal ? "device" : est.method, kcalInput: a.kcal, distanceKm: a.distanceKm, elevationM: a.elevationM };
+  };
+
   app.post("/api/day/:date/activities", async (c) => {
     const u = await user(c.get("uid")), date = c.req.param("date");
     const a = await json(c, ActivityInput);
-    const est = estimateActivity({ minutes: a.minutes, sport: a.sport, avgHr: a.avgHr, deviceKcal: a.kcal, distanceKm: a.distanceKm, elevationM: a.elevationM }, u.profile, computeBmr(u.profile).kcal);
-    const act: Activity = { id: randomUUID(), source: "manual", name: a.name, sport: a.sport, minutes: a.minutes, avgHr: a.avgHr, kcalGross: est.gross, kcalNet: est.net, method: a.kcal ? "device" : est.method };
     const day = (await store.getDay(u.uid, date)) ?? { uid: u.uid, date, preset: null, activities: [], stravaSyncedAt: null };
-    day.activities.push(act);
+    day.activities.push(buildActivity(u, a, randomUUID()));
+    await store.putDay(day);
+    await bump(u.uid);
+    return c.json(await dayView(u, date));
+  });
+
+  app.put("/api/day/:date/activities/:id", async (c) => {
+    const u = await user(c.get("uid")), date = c.req.param("date"), id = c.req.param("id");
+    const a = await json(c, ActivityInput);
+    const day = await store.getDay(u.uid, date);
+    const i = day ? day.activities.findIndex((x) => x.id === id) : -1;
+    if (!day || i < 0) return c.json({ error: "not found" }, 404);
+    if (day.activities[i].source === "strava") return c.json({ error: "Strava sessions can't be edited; they sync from Strava" }, 400);
+    day.activities[i] = buildActivity(u, a, id);
     await store.putDay(day);
     await bump(u.uid);
     return c.json(await dayView(u, date));
@@ -363,7 +412,7 @@ export function buildApp(d: Deps) {
   app.get("/api/strava/connect", async (c) => {
     if (!strava.stravaEnabled()) return c.text("Strava isn't configured on the server (STRAVA_CLIENT_ID / STRAVA_CLIENT_SECRET).", 400);
     const token = c.req.query("t") || "";
-    const uid = config.tokens.get(token) ?? (isDevOpen() ? "me" : null);
+    const uid = hosted ? (c.get("uid") ?? null) : config.tokens.get(token) ?? (isDevOpen() ? "me" : null);
     if (!uid) return c.text("unauthorized", 401);
     return c.redirect(strava.authorizeUrl(strava.makeState(uid), redirectUri(c)));
   });
