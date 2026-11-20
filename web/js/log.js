@@ -2,8 +2,8 @@ import { get } from "./api.js";
 import { openReview } from "./review.js";
 import { $, closeSheet, esc, foodItem, ICONS, n0, openSheet, unitOf } from "./util.js";
 
-/** The Log sheet: one place to start any kind of log. Photo and Label open the camera; Type and Library find a food. */
-const MODES = [["photo", "Photo"], ["label", "Label"], ["type", "Type"], ["library", "Library"]];
+/** The Log sheet: one place to start any kind of log. Photo and Label open the camera; Type finds a food. */
+const MODES = [["photo", "Photo"], ["label", "Label"], ["type", "Type"]];
 let mode = "photo";
 
 export function openLog({ date, onSaved, startCamera, startGallery }) {
@@ -16,7 +16,7 @@ export function openLog({ date, onSaved, startCamera, startGallery }) {
   const pickFood = (f) => review({ mode: "manual", items: [foodItem(f)] });
 
   const draw = () => {
-    const isPhoto = mode === "photo" || mode === "label", isLib = mode === "library";
+    const isPhoto = mode === "photo" || mode === "label";
     $("#lg", body).innerHTML = `
       <header class="lg-head"><h1>Log a meal</h1><button class="round" id="lgClose" aria-label="Close">${ICONS.close}</button></header>
       <div class="lg-tabs" role="tablist" aria-label="How to log">${MODES.map(([id, l]) => `<button role="tab" aria-selected="${mode === id}" data-m="${id}">${l}</button>`).join("")}</div>
@@ -29,25 +29,25 @@ export function openLog({ date, onSaved, startCamera, startGallery }) {
           <button class="lg-row" id="lgGallery">${ICONS.gallery}Choose from gallery</button>
           <p class="lg-fine">You can also share a photo to this app from your gallery.</p>
         </div>` : `<div class="lg-pane">
-          <label class="lg-lab" for="lgQ">${isLib ? "Search your library" : "What did you eat?"}</label>
-          <div class="lg-search">${ICONS.search}<input id="lgQ" type="search" autocomplete="off" enterkeyhint="search" value="${esc(q)}" placeholder="${isLib ? "Search your library" : "e.g. paneer tikka, 2 rotis"}"></div>
+          <label class="lg-lab" for="lgQ">What did you eat?</label>
+          <div class="lg-search">${ICONS.search}<input id="lgQ" type="search" autocomplete="off" enterkeyhint="search" value="${esc(q)}" placeholder="e.g. paneer tikka, 2 rotis"></div>
           <p class="lg-cap" id="lgCap"></p>
           <ul class="list" id="lgList"></ul>
-          ${!isLib ? `<button class="lg-create" id="lgCreate" ${q.trim() ? "" : "hidden"}>${ICONS.plus}<span>Create “<b></b>” as a new food</span></button>` : ""}
+          <button class="lg-create" id="lgCreate" ${q.trim() ? "" : "hidden"}>${ICONS.plus}<span>Create “<b></b>” as a new food</span></button>
           <button class="btn xs ghost" id="lgManual">or enter your own numbers</button>
         </div>`}`;
     bind();
-    if (!isPhoto) { paintList(); $("#lgQ", body).focus({ preventScroll: true }); if (!loaded || q) fetchFoods(); }
+    if (!isPhoto) { paintList(); $("#lgQ", body).focus({ preventScroll: true }); if (!loaded) fetchFoods(); }
   };
 
   const paintList = () => {
-    const isLib = mode === "library", ul = $("#lgList", body); if (!ul) return;
-    const shown = (isLib && !q ? foods.slice().sort((a, b) => b.hits - a.hits) : foods).slice(0, 8);
-    $("#lgCap", body).textContent = !loaded ? "" : isLib ? (q ? "Matches" : "Recent") : (shown.length ? "From your library" : "");
+    const ul = $("#lgList", body); if (!ul) return;
+    const shown = (q ? foods : foods.slice().sort((a, b) => b.hits - a.hits)).slice(0, 8);
+    $("#lgCap", body).textContent = !loaded || !shown.length ? "" : q ? "From your library" : "Most logged";
     ul.hidden = !shown.length;
     ul.innerHTML = shown.map((f) => `<li><button class="li tap lg-food" data-key="${esc(f.key)}">
       <span class="grow"><span class="name">${esc(f.name)}</span>
-        <span class="sub num">${isLib ? `${f.unit ? `Usually 1 ${esc(f.unit.name)} · ` : ""}logged ${f.hits} time${f.hits === 1 ? "" : "s"}` : `per 100 ${unitOf(f)} · P ${n0(f.per100g.protein)} · C ${n0(f.per100g.carbs)} · F ${n0(f.per100g.fat)}`}</span></span>
+        <span class="sub num">per 100 ${unitOf(f)} · P ${n0(f.per100g.protein)} · C ${n0(f.per100g.carbs)} · F ${n0(f.per100g.fat)}</span></span>
       <span class="lg-k num">${n0(f.per100g.kcal)}</span></button></li>`).join("");
     ul.querySelectorAll(".lg-food").forEach((b) => b.onclick = () => pickFood(foods.find((f) => f.key === b.dataset.key)));
     const cr = $("#lgCreate", body);

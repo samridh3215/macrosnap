@@ -1,5 +1,5 @@
 import { del, get, put } from "./api.js";
-import { $, closeSheet, esc, ICONS, n1, openSheet, toast, today } from "./util.js";
+import { $, closeSheet, esc, ICONS, n1, openSheet, toast, today, weekAverages } from "./util.js";
 
 const dayLabel = (d) => new Date(`${d}T00:00:00`).toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" });
 
@@ -8,9 +8,10 @@ export async function renderWeighIns(root) {
   root.innerHTML = `<header class="page-head back"><a class="round" href="#/trends" aria-label="Back to Trends">${ICONS.back}</a><h1>Weigh-ins</h1><button class="btn tonal" id="wiAdd">Add</button></header>
     <p class="small muted" style="margin:0 2px 14px">Weigh in at the same time each morning. The trend smooths out day-to-day water swings.</p>
     <div id="wiList"><div class="sk sk-row"></div><div class="sk sk-row"></div></div>`;
-  let rows = [];
+  let rows = [], to = today();
   const draw = () => {
-    $("#wiList", root).innerHTML = rows.length ? `<ul class="meals">${rows.map((e) => `<li class="wi">
+    const wk = weekAverages(rows, to);
+    $("#wiList", root).innerHTML = rows.length ? `<p class="small num" style="margin:0 2px 12px"><b>${wk.cur != null ? `${n1(wk.cur)} kg` : "—"}</b> average over the last 7 days${wk.prev != null ? ` · ${n1(wk.prev)} kg the week before` : ""}</p><ul class="meals">${rows.map((e) => `<li class="wi">
         <span class="grow"><span class="name">${dayLabel(e.date)}</span><span class="sub num">${e.trend != null ? `trend ${n1(e.trend)} kg` : "no trend yet"}</span></span>
         <span class="kc num">${n1(e.weight)} kg</span>
         <button class="ib" data-d="${e.date}" aria-label="Edit or delete ${dayLabel(e.date)}">${ICONS.more}</button></li>`).join("")}</ul>`
@@ -18,7 +19,7 @@ export async function renderWeighIns(root) {
     $("#wiList", root).querySelectorAll("[data-d]").forEach((b) => b.onclick = () => editor(rows.find((r) => r.date === b.dataset.d)));
   };
   const load = async () => {
-    try { rows = (await get("/api/trends?days=90")).series.filter((s) => s.weight != null).reverse(); draw(); }
+    try { const t = await get("/api/trends?days=90"); to = t.to; rows = t.series.filter((s) => s.weight != null).reverse(); draw(); }
     catch (e) { $("#wiList", root).innerHTML = `<div class="card">${esc(e.message)}</div>`; }
   };
   const editor = (entry) => {

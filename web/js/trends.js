@@ -1,6 +1,6 @@
 import { get } from "./api.js";
 import { intakeChart, weightChart } from "./charts.js";
-import { $, enter, esc, n0, n1 } from "./util.js";
+import { $, enter, esc, n0, n1, weekAverages } from "./util.js";
 
 let range = 30;
 const RANGES = [14, 30, 90];
@@ -22,6 +22,8 @@ export async function renderTrends(root) {
     const delta = trendPts.length > 1 ? trendPts[trendPts.length - 1].trend - trendPts[0].trend : null;
     const proteinAvg = avg(logged, "protein"), proteinGoal = avg(logged, "proteinTarget");
     const few = logged.length < 3;
+    const wk = weekAverages(t.series, t.to);
+    const wkDelta = wk.cur != null && wk.prev != null ? wk.cur - wk.prev : null;
     const tile = (label, value, note) => `<div class="stat-tile"><span class="t-l">${label}</span><b class="num">${value}</b><span class="t-n">${note}</span></div>`;
     $("#tr", root).innerHTML = `
       <section class="panel" aria-label="Calories">
@@ -37,6 +39,10 @@ export async function renderTrends(root) {
       </section>
       <section class="panel" aria-label="Weight">
         <div class="sec-h"><div><h2>Weight</h2><span class="h2-s num">${trendPts.length ? `Trend ${n1(trendPts[trendPts.length - 1].trend)} kg${delta != null ? ` · ${delta >= 0 ? "+" : "−"}${n1(Math.abs(delta))} kg over ${range} days` : ""}` : "No weigh-ins yet"}</span></div><a class="btn chip-btn" href="#/weighins">Weigh-ins</a></div>
+        <div class="tiles wk-tiles">
+          <div class="stat-tile"><span class="t-l">This week's average</span><b class="num">${wk.cur != null ? `${n1(wk.cur)} kg` : "—"}</b><span class="t-n">${wk.curN ? `${wk.curN} weigh-in${wk.curN === 1 ? "" : "s"}, last 7 days` : "no weigh-ins in 7 days"}</span></div>
+          <div class="stat-tile"><span class="t-l">Last week's average</span><b class="num">${wk.prev != null ? `${n1(wk.prev)} kg` : "—"}</b><span class="t-n">${wkDelta != null ? `${wkDelta >= 0 ? "+" : "−"}${n1(Math.abs(wkDelta))} kg vs this week` : "the 7 days before"}</span></div>
+        </div>
         ${weightChart(t.series)}
         <div class="legend"><span><i class="dot" style="background:var(--ink-faint)"></i>Daily weigh-in</span><span><i class="ln" style="background:var(--accent)"></i>Smoothed trend</span></div>
       </section>
