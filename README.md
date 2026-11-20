@@ -152,7 +152,7 @@ Storage is chosen in this order: Couchbase Capella if `COUCHBASE_CONNSTR` is set
 
 ## License
 
-Macro Snap is free to use, modify and share for your own non-commercial use: running it for yourself, your family, a hobby project or study. You may not sell it or use it for commercial purposes. This is the [PolyForm Noncommercial License 1.0.0](LICENSE); read the file for the exact terms. It is source-available rather than open source in the OSI sense. For a commercial licence, open an issue.
+[MIT](LICENSE). Use it, change it and share it however you like.
 
 ## Development
 
