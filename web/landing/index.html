@@ -1,0 +1,309 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Macro Snap: photo in, arithmetic out</title>
+  <meta name="description" content="A self-hosted calorie and macro tracker. Share a meal from your Android gallery and every number shows how it was worked out, against targets that follow your training." />
+  <meta name="theme-color" content="#c3c9d1" />
+  <link rel="icon" href="/icons/icon-192.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@500;600&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&family=IBM+Plex+Mono:wght@400;500&display=swap" />
+  <script>(function(){var d=document.documentElement;if(window.matchMedia&&!matchMedia("(prefers-reduced-motion: reduce)").matches){d.classList.add("anim");setTimeout(function(){if(!window.__landing)d.classList.remove("anim")},3000)}})();</script>
+  <link rel="stylesheet" href="./landing.css" />
+</head>
+<body>
+
+  <header class="nav">
+    <div class="progress" aria-hidden="true"></div>
+    <div class="container nav-in">
+      <nav class="nav-links" aria-label="Sections">
+        <a href="#checks">Checks</a>
+        <a href="#targets">Targets</a>
+        <a href="#screens">Screens</a>
+      </nav>
+      <a class="wordmark" href="#top">Macro Snap</a>
+      <a class="btn btn--primary nav-cta" href="#self-host">Self-host it</a>
+    </div>
+  </header>
+
+  <main id="top">
+
+    <!-- Hero: Counter. The printed sheet is the product doing its one job. -->
+    <section class="hero" aria-labelledby="hero-title">
+      <div class="container hero-in">
+        <div class="hero-copy">
+          <h1 id="hero-title">Photo in. Arithmetic out.</h1>
+          <p class="lead">Every calorie shows its working, from the share sheet to your log.</p>
+          <div class="actions">
+            <a class="btn btn--primary" href="#self-host">Self-host it</a>
+            <a class="btn" href="#checks">See the working</a>
+          </div>
+        </div>
+
+        <figure class="sheet hero-sheet" data-kind="product">
+          <div class="sheet-head">
+            <h2 class="sheet-title">Prawn curry with rice</h2>
+            <span class="sheet-tag">Sample meal</span>
+          </div>
+          <div class="scroll" tabindex="0" role="region" aria-label="Meal breakdown table">
+            <table class="ledger">
+              <thead>
+                <tr>
+                  <th scope="col">Item</th>
+                  <th scope="col" class="num"><span class="long">Grams</span><span class="short" title="Grams">g</span></th>
+                  <th scope="col" class="num"><span class="long">Protein</span><span class="short" title="Protein">P</span></th>
+                  <th scope="col" class="num"><span class="long">Carbs</span><span class="short" title="Carbs">C</span></th>
+                  <th scope="col" class="num"><span class="long">Fat</span><span class="short" title="Fat">F</span></th>
+                  <th scope="col" class="num">Fibre</th>
+                  <th scope="col" class="num">kcal</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr data-item="curry">
+                  <th scope="row">Prawn curry<small>From your library</small>
+                    <input class="gram" type="range" min="50" max="500" step="10" value="250" aria-label="Grams of prawn curry" data-p="11.2" data-c="4.4" data-f="6" data-fi="1.2" /></th>
+                  <td class="num g">250</td><td class="num p">28</td><td class="num c">11</td><td class="num f">15</td><td class="num fi">3</td><td class="num strong k">297</td>
+                </tr>
+                <tr data-item="rice">
+                  <th scope="row">Basmati rice<small>From your note</small>
+                    <input class="gram" type="range" min="40" max="400" step="10" value="160" aria-label="Grams of basmati rice" data-p="2.5" data-c="28.1" data-f="0.6" data-fi="0.6" /></th>
+                  <td class="num g">160</td><td class="num p">4</td><td class="num c">45</td><td class="num f">1</td><td class="num fi">1</td><td class="num strong k">207</td>
+                </tr>
+                <tr data-item="ghee" hidden>
+                  <th scope="row">Ghee<small>From your note</small></th>
+                  <td class="num g">5</td><td class="num p">0</td><td class="num c">0</td><td class="num f">5</td><td class="num fi">0</td><td class="num strong k">45</td>
+                </tr>
+                <tr class="total">
+                  <th scope="row">Meal</th>
+                  <td class="num g">410</td><td class="num p">32</td><td class="num c">56</td><td class="num f">16</td><td class="num fi">4</td><td class="num strong k">504</td>
+                </tr>
+                <tr class="check">
+                  <td colspan="7"><span class="mark" id="eq">4 × 32 + 4 × 56 + 9 × 16 + 2 × 4 = 504</span> <span id="eq-note">Adds up.</span></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="sheet-foot">
+            <p class="big"><span class="num" id="big">504</span> kcal</p>
+            <button class="chip" type="button" id="ghee" aria-pressed="false">Add “extra ghee” note</button>
+          </div>
+          <figcaption>Drag the grams.</figcaption>
+        </figure>
+      </div>
+    </section>
+
+    <!-- Checks: a Table, the product's own rules -->
+    <section class="section" id="checks" aria-labelledby="checks-title">
+      <div class="container">
+        <div class="head-split">
+          <h2 id="checks-title">Checked before it’s kept</h2>
+          <p class="lead">A vision model names the plate. A second works out new foods. Arithmetic decides.</p>
+        </div>
+        <div class="check-grid">
+        <div class="scroll" tabindex="0" role="region" aria-label="The four checks">
+          <table class="rules">
+            <thead>
+              <tr><th scope="col">Check</th><th scope="col">The rule</th><th scope="col">If it fails</th></tr>
+            </thead>
+            <tbody>
+              <tr data-rule="energy"><th scope="row">Energy</th><td class="mono">kcal = 4P + 4C + 9F + 2 fibre</td><td>Sent back.</td></tr>
+              <tr data-rule="mass"><th scope="row">Mass</th><td class="mono">macros ≤ 100 g per 100 g</td><td>Sent back.</td></tr>
+              <tr><th scope="row">Ingredients</th><td class="mono">sum of ingredient kcal = dish kcal</td><td>Sent back.</td></tr>
+              <tr><th scope="row">Still wrong</th><td>Fails twice.</td><td>Flagged on the item.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <form class="sheet validator" aria-labelledby="val-title">
+          <h3 id="val-title" class="sheet-title">Try to fool it, per 100 g</h3>
+          <div class="val-fields">
+            <label>Protein<input type="number" id="v-p" min="0" step="0.5" value="25" inputmode="decimal" /></label>
+            <label>Carbs<input type="number" id="v-c" min="0" step="0.5" value="3" inputmode="decimal" /></label>
+            <label>Fat<input type="number" id="v-f" min="0" step="0.5" value="5" inputmode="decimal" /></label>
+            <label>Fibre<input type="number" id="v-fi" min="0" step="0.5" value="0.5" inputmode="decimal" /></label>
+            <label>kcal<input type="number" id="v-k" min="0" step="1" value="158" inputmode="numeric" /></label>
+          </div>
+          <div class="val-presets">
+            <button class="chip" type="button" data-preset="25,3,5,0.5,158">Chicken tikka</button>
+            <button class="chip" type="button" data-preset="13,5,15,1,209">Paneer bhurji</button>
+            <button class="chip" type="button" id="v-break">Break the kcal</button>
+          </div>
+          <ul class="val-out" aria-live="polite">
+            <li id="o-energy"></li>
+            <li id="o-mass"></li>
+            <li id="o-verdict" class="verdict"></li>
+          </ul>
+        </form>
+        </div>
+      </div>
+    </section>
+
+    <!-- Targets: the one working control, on the product's own formulas -->
+    <section class="section band-2" id="targets" aria-labelledby="targets-title">
+      <div class="container targets">
+        <div class="targets-copy">
+          <h2 id="targets-title">A target that follows your training</h2>
+          <p class="lead">Pick an activity level. Carbs fill what protein and fat leave.</p>
+
+          <fieldset class="levels" id="levels">
+            <legend>Activity level</legend>
+            <div class="seg">
+              <label><input type="radio" name="level" value="1" /><span>1</span></label>
+              <label><input type="radio" name="level" value="2" /><span>2</span></label>
+              <label><input type="radio" name="level" value="3" /><span>3</span></label>
+              <label><input type="radio" name="level" value="4" checked /><span>4</span></label>
+              <label><input type="radio" name="level" value="5" /><span>5</span></label>
+            </div>
+            <p class="blurb" id="blurb" aria-live="polite">Very active: a regular hard training session</p>
+          </fieldset>
+
+          <div class="dials">
+            <fieldset class="levels goal">
+              <legend>Goal</legend>
+              <div class="seg seg-3">
+                <label><input type="radio" name="goal" value="cut" checked /><span>Cut</span></label>
+                <label><input type="radio" name="goal" value="maintain" /><span>Hold</span></label>
+                <label><input type="radio" name="goal" value="bulk" /><span>Bulk</span></label>
+              </div>
+            </fieldset>
+            <label class="weight">Body weight <output id="wout">72 kg</output>
+              <input class="gram" type="range" id="wt" min="50" max="100" step="1" value="72" />
+            </label>
+          </div>
+
+          <table class="readout">
+            <caption class="visually-hidden">Targets for the selected activity level</caption>
+            <tbody>
+              <tr><th scope="row">Resting burn (BMR)</th><td class="num" id="r-bmr">1,645</td></tr>
+              <tr><th scope="row">Maintenance</th><td class="num" id="r-maint">2,712</td></tr>
+              <tr class="pick"><th scope="row" id="r-tl">Target on a cut</th><td class="num" id="r-target">2,316</td></tr>
+              <tr><th scope="row">Protein</th><td class="num"><span id="r-p">159</span> g</td></tr>
+              <tr><th scope="row">Carbs</th><td class="num"><span id="r-c">275</span> g</td></tr>
+              <tr><th scope="row">Fat</th><td class="num"><span id="r-f">64</span> g</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <figure class="chart">
+          <svg id="chart" viewBox="0 0 720 420" role="img" aria-labelledby="chart-t chart-d">
+            <title id="chart-t">Daily calorie target by activity level</title>
+            <desc id="chart-d">Targets rise with activity level. A tick on each bar marks maintenance.</desc>
+            <g class="grid"><line x1="48" x2="720" y1="302.7" y2="302.7" /><text x="40" y="306.7" text-anchor="end">1,000</text><line x1="48" x2="720" y1="225.5" y2="225.5" /><text x="40" y="229.5" text-anchor="end">2,000</text><line x1="48" x2="720" y1="148.2" y2="148.2" /><text x="40" y="152.2" text-anchor="end">3,000</text><line x1="48" x2="720" y1="70.9" y2="70.9" /><text x="40" y="74.9" text-anchor="end">4,000</text></g>
+            <line class="base" x1="48" x2="720" y1="380" y2="380" />
+            <g id="bars">
+              <g class="bar" data-level="1"><rect x="80" y="40" width="96" height="340" style="transform:scaleY(0.3739)" /><line class="maint" x1="72" x2="184" y1="380" y2="380" style="transform:translateY(-152.5px)" /><text class="val" x="128" y="380" text-anchor="middle" style="transform:translateY(-136.1px)">1,645</text><text class="lvl" x="128" y="404" text-anchor="middle">1</text></g>
+              <g class="bar" data-level="2"><rect x="214" y="40" width="96" height="340" style="transform:scaleY(0.4302)" /><line class="maint" x1="206" x2="318" y1="380" y2="380" style="transform:translateY(-176.9px)" /><text class="val" x="262" y="380" text-anchor="middle" style="transform:translateY(-155.3px)">1,893</text><text class="lvl" x="262" y="404" text-anchor="middle">2</text></g>
+              <g class="bar" data-level="3"><rect x="348" y="40" width="96" height="340" style="transform:scaleY(0.4830)" /><line class="maint" x1="340" x2="452" y1="380" y2="380" style="transform:translateY(-194.8px)" /><text class="val" x="396" y="380" text-anchor="middle" style="transform:translateY(-173.2px)">2,125</text><text class="lvl" x="396" y="404" text-anchor="middle">3</text></g>
+              <g class="bar is-on" data-level="4"><rect x="482" y="40" width="96" height="340" style="transform:scaleY(0.5264)" /><line class="maint" x1="474" x2="586" y1="380" y2="380" style="transform:translateY(-209.6px)" /><text class="val" x="530" y="380" text-anchor="middle" style="transform:translateY(-188.0px)">2,316</text><text class="lvl" x="530" y="404" text-anchor="middle">4</text></g>
+              <g class="bar" data-level="5"><rect x="616" y="40" width="96" height="340" style="transform:scaleY(0.6152)" /><line class="maint" x1="608" x2="720" y1="380" y2="380" style="transform:translateY(-239.8px)" /><text class="val" x="664" y="380" text-anchor="middle" style="transform:translateY(-218.2px)">2,707</text><text class="lvl" x="664" y="404" text-anchor="middle">5</text></g>
+            </g>
+          </svg>
+          <figcaption><span id="cap-w">72</span> kg, 176 cm, 29, male, 18% body fat, 0.5% a week. Ticks mark maintenance. Targets never fall below the resting burn.</figcaption>
+        </figure>
+      </div>
+    </section>
+
+    <!-- Screens: the real product, captured -->
+    <section class="section" id="screens" aria-labelledby="screens-title">
+      <div class="container screens">
+        <div class="screens-copy">
+          <h2 id="screens-title">A range, not a verdict</h2>
+          <p class="lead">Over target but under maintenance still reads as a deficit.</p>
+        </div>
+        <figure class="shot" data-kind="product">
+          <div class="shot-frame"><img src="./img/today.png" width="780" height="1688" alt="The Today screen: 1,812 of 2,018 kcal eaten, status Still in deficit, a range bar with minimum, target and maintenance, and protein, carbs and fat against their targets." /></div>
+          <figcaption>Today, with sample data.</figcaption>
+        </figure>
+        <figure class="shot" data-kind="product">
+          <div class="shot-frame"><img src="./img/trends.png" width="780" height="1688" alt="The Trends screen: a bar chart of daily calories over 30 days against the target and maintenance lines, with average intake, days in range, average protein and days logged." /></div>
+          <figcaption>Trends, with sample data.</figcaption>
+        </figure>
+      </div>
+    </section>
+
+    <!-- Library: the one ink band -->
+    <section class="section band-ink" id="library" aria-labelledby="library-title">
+      <div class="container">
+        <div class="head-split">
+          <h2 id="library-title">The library learns your kitchen</h2>
+          <p class="lead">Each food is worked out once. Rename it and the library learns.</p>
+        </div>
+        <div class="scroll" tabindex="0" role="region" aria-label="How the library matches foods">
+          <table class="file">
+            <thead>
+              <tr><th scope="col"><span class="hl">you_logged</span></th><th scope="col"><span class="hl">matched_to</span></th><th scope="col"><span class="hl">what_happens</span></th></tr>
+            </thead>
+            <tbody>
+              <tr><td>chiken tikka</td><td>chicken tikka</td><td class="prose">Linked automatically.</td></tr>
+              <tr><td>paneer tikka</td><td>paneer tikka masala</td><td class="prose">Asks “Same as…?” and remembers a No.</td></tr>
+              <tr><td>daal</td><td>dal</td><td class="prose">One key for spellings and synonyms.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="match">
+          <div class="match-in">
+            <label for="m-in">Log a food</label>
+            <input id="m-in" type="text" value="chiken tikka" autocomplete="off" spellcheck="false" />
+            <div class="match-chips">
+              <button class="chip chip--ink" type="button" data-try="chiken tikka">chiken tikka</button>
+              <button class="chip chip--ink" type="button" data-try="paneer tikka">paneer tikka</button>
+              <button class="chip chip--ink" type="button" data-try="daal">daal</button>
+              <button class="chip chip--ink" type="button" data-try="mutton biryani">mutton biryani</button>
+            </div>
+          </div>
+          <div class="match-out" aria-live="polite">
+            <p class="match-closest">Closest: <span class="mono" id="m-closest"></span> <span class="mono" id="m-score"></span></p>
+            <p class="match-result" id="m-result"></p>
+          </div>
+        </div>
+        <p class="file-note">Library: chicken tikka, paneer tikka masala, dal, roti, chicken biryani, basmati rice.</p>
+      </div>
+    </section>
+
+    <!-- Self-host: platforms and what it needs; the close -->
+    <section class="section" id="self-host" aria-labelledby="host-title">
+      <div class="container host">
+        <div class="host-copy">
+          <h2 id="host-title">Yours, on your own server</h2>
+          <p class="lead">One container and one OpenRouter key.</p>
+          <ul class="facts">
+            <li><strong>Your data.</strong> One SQLite file.</li>
+            <li><strong>Redis.</strong> A cache only.</li>
+            <li><strong>Your phone.</strong> Share photos to it over Tailscale HTTPS.</li>
+          </ul>
+        </div>
+        <div class="host-run">
+          <pre class="code" tabindex="0"><code>git clone https://github.com/samridh3215/macrosnap
+cd macrosnap
+cp .env.example .env
+docker compose up -d --build</code></pre>
+          <p class="code-note">Set APP_TOKEN and OPENROUTER_API_KEY in .env first.</p>
+          <div class="actions">
+            <a class="btn btn--primary" href="https://github.com/samridh3215/macrosnap">Open the repository</a>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <footer class="footer">
+    <div class="container">
+      <p class="footer-mast">Macro Snap</p>
+      <nav class="footer-links" aria-label="Footer">
+        <a href="#checks">Checks</a>
+        <a href="#targets">Targets</a>
+        <a href="#screens">Screens</a>
+        <a href="#self-host">Self-host</a>
+        <a href="https://github.com/samridh3215/macrosnap">Source</a>
+      </nav>
+      <p class="footer-line">Your meals stay on your server.</p>
+    </div>
+  </footer>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js"></script>
+  <script src="./landing.js"></script>
+</body>
+</html>
