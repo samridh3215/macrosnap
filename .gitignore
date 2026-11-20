@@ -2,3 +2,8 @@ node_modules
 dist
 data
 .env
+
+# Local notes, not for the public repo
+twitter-posts.md
+creator-timeline.md
+.hallmark/
