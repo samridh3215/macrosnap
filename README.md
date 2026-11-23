@@ -2,6 +2,10 @@
 
 **Share a food photo, get calories and macros you can check.**
 
+[![Macro Snap in 20 seconds: watch the video](docs/demo.jpg)](https://github.com/samridh3215/macrosnap/raw/main/docs/demo.mp4)
+
+<sub>▶ Click the image to watch the 20-second demo.</sub>
+
 Macro Snap is a self-hosted calorie and macro tracker. Share a meal from your Android gallery and it tells you what is on the plate, how many grams, and the calories and macros, with the working shown. It then judges your day against targets that follow your training and your real metabolism.
 
 Most trackers ask you to trust one AI guess. Macro Snap makes the AI show its work, then checks the arithmetic before anything is saved.
